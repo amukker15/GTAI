@@ -1,42 +1,31 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* Page Layout */
+.page {
+  @apply max-w-7xl mx-auto px-4 py-6;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
+/* Card Components */
 .card {
-  padding: 2em;
+  @apply bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden;
 }
 
-.read-the-docs {
-  color: #888;
+.card-h {
+  @apply px-6 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100;
+}
+
+.card-b {
+  @apply p-6;
+}
+
+/* Pulsing Animation for Active Alerts */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }
