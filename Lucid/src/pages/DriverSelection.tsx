@@ -1,15 +1,15 @@
-import { Link, useNavigate } from "react-router-dom";
-import { useStore } from "../state/store";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useStore } from "../state/store";
 import { computeStatus, statusToColor } from "../lib/status";
 import { Search, CheckCircle, AlertTriangle, AlertCircle } from "../components/icons";
 
 export default function DriverSelection() {
   const navigate = useNavigate();
-  const trucks = useStore((s) => s.trucks);
-  const telemetryByTruckId = useStore((s) => s.telemetryByTruckId);
-  const alerts = useStore((s) => s.alerts);
-  const thresholds = useStore((s) => s.thresholds);
+  const trucks = useStore((state) => state.trucks);
+  const telemetryByTruckId = useStore((state) => state.telemetryByTruckId);
+  const alerts = useStore((state) => state.alerts);
+  const thresholds = useStore((state) => state.thresholds);
   const [searchTerm, setSearchTerm] = useState("");
 
   const getTruckStatus = (truckId: string) => {
@@ -20,27 +20,30 @@ export default function DriverSelection() {
   };
 
   const getStatusBadge = (status: string) => {
-    const baseClasses = "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium";
-    
+    const baseClasses =
+      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold tracking-wide";
+
     if (status === "ASLEEP") {
       return (
-        <span className={`${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300`}>
-          <AlertCircle className="w-3 h-3" />
+        <span className={`${baseClasses} border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200`}>
+          <AlertCircle className="h-3 w-3" />
           Critical
         </span>
       );
     }
+
     if (status === "DROWSY_SOON") {
       return (
-        <span className={`${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300`}>
-          <AlertTriangle className="w-3 h-3" />
+        <span className={`${baseClasses} border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200`}>
+          <AlertTriangle className="h-3 w-3" />
           Warning
         </span>
       );
     }
+
     return (
-      <span className={`${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300`}>
-        <CheckCircle className="w-3 h-3" />
+      <span className={`${baseClasses} border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200`}>
+        <CheckCircle className="h-3 w-3" />
         Lucid
       </span>
     );
@@ -57,6 +60,13 @@ export default function DriverSelection() {
     );
   }, [trucks, searchTerm]);
 
+  const filteredTruckIds = useMemo(() => new Set(filteredTrucks.map((truck) => truck.id)), [filteredTrucks]);
+
+
+  const filteredAlertCount = useMemo(() => {
+    return alerts.filter((alert) => alert.status !== "OK" && filteredTruckIds.has(alert.truckId)).length;
+  }, [alerts, filteredTruckIds]);
+
   const getDriverInitials = (name: string) => {
     return name
       .split(" ")
@@ -68,68 +78,84 @@ export default function DriverSelection() {
 
   return (
     <div
-      className="min-h-screen bg-gray-50 dark:bg-gray-900"
+      className="min-h-screen bg-white dark:bg-gray-900"
       style={{ paddingTop: "var(--app-header-height, 96px)" }}
     >
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Driver Studio
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Select a driver to view detailed insights and monitoring data
-          </p>
-        </div>
-
-        {/* Search Bar */}
-        <div className="mb-6">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search drivers, trucks, or companies..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-            />
+      <div className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-8">
+          <div className="text-center">
+            <p className="text-xs uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Driver Studio</p>
+            <h1 className="mt-2 text-4xl font-bold text-gray-900 dark:text-white">Select a Driver</h1>
+            <p className="mt-3 text-lg text-gray-600 dark:text-gray-300">Look at their real-time activity feed</p>
+          </div>
+          
+          <div className="mt-8 mx-auto max-w-lg">
+            <label htmlFor="driver-search" className="sr-only">
+              Search drivers, trucks, or companies
+            </label>
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+              <input
+                id="driver-search"
+                type="text"
+                placeholder="Search drivers, trucks, or companies..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-4 pl-12 pr-16 text-base text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:bg-gray-600"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-sm font-medium text-gray-500 transition hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-600"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="mt-6 flex justify-center gap-8 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+              <span className="font-medium text-gray-900 dark:text-white">{filteredTrucks.length}</span>
+              <span className="text-gray-600 dark:text-gray-300">drivers</span>
+            </div>
+            {filteredAlertCount > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-amber-500"></div>
+                <span className="font-medium text-gray-900 dark:text-white">{filteredAlertCount}</span>
+                <span className="text-gray-600 dark:text-gray-300">alerts</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Driver Grid */}
         {filteredTrucks.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-10 text-center dark:border-gray-600 dark:bg-gray-800/50">
             {trucks.length === 0 ? (
               <div>
-                <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <Search className="w-8 h-8 text-gray-400" />
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                  <Search className="h-7 w-7 text-gray-400" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  No drivers available
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Waiting for driver data to load...
-                </p>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">No drivers available</h3>
+                <p className="mt-2 text-gray-600 dark:text-gray-400">Waiting for driver data to load...</p>
               </div>
             ) : (
               <div>
-                <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <Search className="w-8 h-8 text-gray-400" />
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                  <Search className="h-7 w-7 text-gray-400" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  No drivers found
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Try adjusting your search terms
-                </p>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">No drivers found</h3>
+                <p className="mt-2 text-gray-600 dark:text-gray-400">Try adjusting your search terms.</p>
               </div>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredTrucks.map((truck) => {
               const status = getTruckStatus(truck.id);
-              const alert = alerts.find((a) => a.truckId === truck.id && a.status !== "OK");
+              const alert = alerts.find((item) => item.truckId === truck.id && item.status !== "OK");
               const history = telemetryByTruckId[truck.id] || [];
               const latest = history[history.length - 1];
               const statusColor = statusToColor(status);
@@ -138,100 +164,48 @@ export default function DriverSelection() {
                 <button
                   key={truck.id}
                   onClick={() => navigate(`/truck/${truck.id}`)}
-                  className="group relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 text-left hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 hover:-translate-y-1"
+                  className="group relative flex h-full flex-col rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-blue-400 hover:shadow-md hover:-translate-y-0.5 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-500"
                 >
-                  {/* Status indicator */}
-                  <div className="absolute top-4 right-4">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: statusColor }}
-                    />
+                  <div className="absolute inset-x-5 top-0 h-1 rounded-b-full" style={{ backgroundColor: statusColor }} />
+                  
+                  <div className="flex items-start justify-between gap-3 pt-2">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-semibold text-white"
+                        style={{ backgroundColor: statusColor }}
+                      >
+                        {getDriverInitials(truck.driverName)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Truck {truck.id}</p>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{truck.driverName}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">{truck.company}</p>
+                      </div>
+                    </div>
+                    {getStatusBadge(alert?.status ?? status)}
                   </div>
 
-                  {/* Driver Avatar */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm"
-                      style={{ backgroundColor: statusColor }}
-                    >
-                      {getDriverInitials(truck.driverName)}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
-                        {truck.driverName}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Truck {truck.id}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Route Information */}
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Current Route</p>
+                  <div className="mt-4 rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Current Route</p>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">
                       {truck.route.from} → {truck.route.to}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                      {truck.company}
-                    </p>
                   </div>
 
-                  {/* Status Badge */}
-                  <div className="flex items-center justify-between">
-                    <div>{getStatusBadge(alert?.status ?? status)}</div>
-                    {latest && (
-                      <div className="text-xs text-gray-500 dark:text-gray-500">
-                        Updated {new Date(latest.timestamp).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Alert indicator if present */}
-                  {alert && (
-                    <div className="mt-3 p-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                      <p className="text-xs text-red-700 dark:text-red-300 font-medium">
-                        Active Alert: {alert.reason}
-                      </p>
+                  {latest && (
+                    <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                      Updated {new Date(latest.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   )}
 
-                  {/* Hover indicator */}
-                  <div className="absolute inset-0 rounded-xl border-2 border-transparent group-hover:border-blue-300 dark:group-hover:border-blue-600 transition-colors pointer-events-none" />
+                  {alert && (
+                    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+                      <span className="font-medium">Active Alert:</span> {alert.reason}
+                    </div>
+                  )}
                 </button>
               );
             })}
-          </div>
-        )}
-
-        {/* Footer Stats */}
-        {trucks.length > 0 && (
-          <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-              <div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {filteredTrucks.length}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {searchTerm ? "Filtered Drivers" : "Total Drivers"}
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {filteredTrucks.filter((t) => getTruckStatus(t.id) === "OK").length}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Lucid Status</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {alerts.filter((a) => a.status !== "OK" && filteredTrucks.some((t) => t.id === a.truckId)).length}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Active Alerts</p>
-              </div>
-            </div>
           </div>
         )}
       </div>
