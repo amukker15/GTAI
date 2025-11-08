@@ -233,3 +233,53 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+    # --- api_tester-style upload: POST a local footage file to /api/window ---
+    try:
+        import requests
+    except Exception:
+        print("\nrequests library not installed; skipping API tester upload. Install with: pip install requests")
+    else:
+        from pathlib import Path
+        import json
+
+        # locate footage directory relative to this script
+        script_dir = Path(__file__).parent
+        footage_dir = script_dir.parent / "footage"
+        video_file = None
+        if footage_dir.exists():
+            for ext in ("*.mp4", "*.mov", "*.avi", "*.mkv", "*.mpg", "*.webm"):
+                matches = list(footage_dir.glob(ext))
+                if matches:
+                    video_file = matches[0]
+                    break
+
+        if not video_file:
+            print("\nNo video file found in footage/; skipping API tester upload.")
+        else:
+            base_url = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip('/')
+            upload_url = f"{base_url}/api/window"
+            print(f"\nUploading {video_file.name} to {upload_url} with timestamp=35")
+            try:
+                with open(video_file, 'rb') as fh:
+                    files = {'video': (video_file.name, fh, 'application/octet-stream')}
+                    data = {'timestamp': '35', 'session_id': 'api_tester_local', 'driver_id': 'test_driver'}
+                    resp = requests.post(upload_url, files=files, data=data, timeout=120)
+                try:
+                    resp.raise_for_status()
+                except Exception as re:
+                    print(f"Upload failed: {re} (status {resp.status_code})")
+                    try:
+                        print(resp.text)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        payload = resp.json()
+                        print("API /api/window response JSON:")
+                        print(json.dumps(payload, indent=2))
+                    except Exception:
+                        print("Upload succeeded but response was not JSON:")
+                        print(resp.text)
+            except Exception as e:
+                print(f"Error uploading file to API tester: {e}")

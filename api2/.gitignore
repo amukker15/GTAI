@@ -1,0 +1,5 @@
+# Ignore local footage uploads (sensitive / large files)
+footage/
+
+# Local .env (credentials)
+.env
