@@ -15,14 +15,6 @@ import {
 } from "recharts";
 import { fetchLongTermMetrics, type LongTermMetrics, type VarKey } from "../api/snowflake.ts";
 
-const VAR_LABEL: Record<VarKey, string> = {
-  perclos: "PERCLOS",
-  headDownDegrees: "Head Down (°)",
-  yawnCount30s: "Yawns/30s",
-  heartRate: "Heart Rate",
-  hrvRmssd: "HRV RMSSD",
-};
-
 export default function LongTerm() {
   const { truckId = "" } = useParams();
   const [from, setFrom] = useState<string>(() => isoDateOffset(-30));
@@ -62,7 +54,7 @@ export default function LongTerm() {
   }, [data]);
 
   return (
-    <div className="page">
+    <div className="page" style={{ marginTop: "var(--app-header-height, 96px)" }}>
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <Link to={`/truck/${truckId}`} className="text-blue-600 underline">← Back to Truck</Link>

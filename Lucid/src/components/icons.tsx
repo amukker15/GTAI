@@ -60,3 +60,50 @@ export const Home = (props: IconProps) => (
     <path d="M9 21V9h6v12" />
   </svg>
 );
+
+export const Bell = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+export const Search = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.35-4.35" />
+  </svg>
+);
+
+export const Sparkles = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M12 3v4" />
+    <path d="m10 7 2 2 2-2" />
+    <path d="M5 10v4" />
+    <path d="m3 14 2 2 2-2" />
+    <path d="M19 8v4" />
+    <path d="m17 12 2 2 2-2" />
+    <path d="M12 15v6" />
+    <path d="m10 19 2 2 2-2" />
+  </svg>
+);
+
+export const Radar = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="5" />
+    <path d="M12 12 20 4" />
+    <path d="M12 3v3" />
+  </svg>
+);
+
+export const Timeline = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M4 6h16" />
+    <path d="M4 12h16" />
+    <path d="M4 18h16" />
+    <circle cx="8" cy="6" r="2" />
+    <circle cx="16" cy="12" r="2" />
+    <circle cx="8" cy="18" r="2" />
+  </svg>
+);

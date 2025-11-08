@@ -1,6 +1,6 @@
 import type { Alert, Telemetry, Thresholds, Truck } from "../lib/types";
 import { apiRequest, type ApiRequestOptions } from "./client";
-import { DRIVERS, ROUTES, getRouteById } from "./referenceData";
+import { DRIVERS, getRouteById } from "./referenceData";
 
 const DEFAULT_THRESHOLDS: Thresholds = {
   perclosHigh: 0.4,

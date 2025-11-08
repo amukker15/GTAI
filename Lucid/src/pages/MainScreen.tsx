@@ -176,7 +176,10 @@ export default function MainScreen() {
   };
 
   return (
-    <div className="fixed inset-0 flex pt-[73px]">
+    <div
+      className="fixed inset-0 flex"
+      style={{ paddingTop: "var(--app-header-height, 96px)" }}
+    >
       {/* Left: Full-height Map */}
       <div className="w-2/3 h-full">
         <MapContainer

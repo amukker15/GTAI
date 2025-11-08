@@ -125,7 +125,10 @@ export default function TruckDetail() {
   };
 
   return (
-    <div className="page pt-0 pb-10 space-y-6 mt-[64px]">
+    <div
+      className="page pt-0 pb-10 space-y-6"
+      style={{ marginTop: "var(--app-header-height, 96px)" }}
+    >
       <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur px-6 py-5 flex flex-wrap items-center gap-5 justify-between">
         <Link
           to="/"
