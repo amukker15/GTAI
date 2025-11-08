@@ -1,6 +1,6 @@
 // src/pages/TruckDetail.tsx
 import { Link, useParams } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useStore } from "../state/store";
 import type { LatLngTuple, LatLngBoundsExpression } from "leaflet";
 import { MapContainer, TileLayer, Polyline } from "react-leaflet";
@@ -41,9 +41,6 @@ export default function TruckDetail() {
   const { darkMode } = useDarkMode();
 
   // Local UI state
-  const [showThresholds, setShowThresholds] = useState(false);
-  const [thLocal, setThLocal] = useState<Thresholds | null>(thresholds);
-  const saveThresholds = useStore((s) => s.saveThresholds);
 
   const history: Telemetry[] = telemetryByTruckId[truckId] || [];
   const latest = history[history.length - 1];
@@ -118,11 +115,6 @@ export default function TruckDetail() {
   const cardBodyClass = "flex-1 px-5 py-4";
 
   // Handlers
-  const onSaveThresholds = async () => {
-    if (!thLocal) return;
-    await saveThresholds(thLocal);
-    setShowThresholds(false);
-  };
 
   return (
     <div
@@ -166,12 +158,6 @@ export default function TruckDetail() {
         <div className={`${cardClass} xl:col-span-1 min-h-[360px]`}>
           <div className={cardHeaderClass}>
             <span className="font-semibold">Driver Region View</span>
-            <button
-              onClick={() => setShowThresholds(true)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              Edit thresholds
-            </button>
           </div>
           <div className={`${cardBodyClass} pt-4`}>
             <div className="h-[280px] rounded-xl overflow-hidden ring-1 ring-gray-200/60 dark:ring-gray-800">
@@ -301,122 +287,7 @@ export default function TruckDetail() {
         </div>
       </div>
 
-      {/* Thresholds drawer */}
-      {showThresholds && (
-        <div className="fixed inset-0 z-20">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowThresholds(false)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl p-4 overflow-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Edit thresholds</h2>
-              <button className="px-3 py-1 rounded bg-gray-100" onClick={() => setShowThresholds(false)}>
-                ✕
-              </button>
-            </div>
-
-            <ThresholdEditor
-              initial={thresholds}
-              onChange={setThLocal}
-              values={thLocal}
-            />
-
-            <div className="mt-4 flex gap-2">
-              <button
-                className="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-                onClick={onSaveThresholds}
-                disabled={!thLocal}
-              >
-                Save
-              </button>
-              <button
-                className="px-3 py-2 rounded bg-gray-100"
-                onClick={() => {
-                  setThLocal(thresholds ?? null);
-                  setShowThresholds(false);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-/** Small inline thresholds editor to avoid extra files */
-function ThresholdEditor({
-  initial,
-  values,
-  onChange,
-}: {
-  initial: Thresholds | null;
-  values: Thresholds | null;
-  onChange: (t: Thresholds | null) => void;
-}) {
-  const base: Thresholds =
-    values ??
-    initial ?? {
-      perclosHigh: 0.4,
-      headDownDegHigh: 25,
-      yawnCountHigh: 3,
-      hrLow: 50,
-      hrvLow: 20,
-      predictionWindowSec: [30, 120],
-    };
-
-  const set = <K extends keyof Thresholds>(k: K, v: Thresholds[K]) =>
-    onChange({ ...base, [k]: v });
-
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      <Num label="PERCLOS high" value={base.perclosHigh} step={0.01} min={0} max={1}
-        onChange={(v) => set("perclosHigh", v)} />
-      <Num label="Head down deg high" value={base.headDownDegHigh} step={1} min={0} max={90}
-        onChange={(v) => set("headDownDegHigh", v)} />
-      <Num label="Yawns per 30s high" value={base.yawnCountHigh} step={1} min={0} max={10}
-        onChange={(v) => set("yawnCountHigh", v)} />
-      <Num label="HR low (bpm)" value={base.hrLow} step={1} min={20} max={120}
-        onChange={(v) => set("hrLow", v)} />
-      <Num label="HRV RMSSD low (ms)" value={base.hrvLow} step={1} min={1} max={100}
-        onChange={(v) => set("hrvLow", v)} />
-      <div className="col-span-2 grid grid-cols-2 gap-3">
-        <Num label="Predict min (s)" value={base.predictionWindowSec[0]} step={5} min={10} max={300}
-          onChange={(v) => set("predictionWindowSec", [v, base.predictionWindowSec[1]])} />
-        <Num label="Predict max (s)" value={base.predictionWindowSec[1]} step={5} min={10} max={600}
-          onChange={(v) => set("predictionWindowSec", [base.predictionWindowSec[0], v])} />
-      </div>
-    </div>
-  );
-}
-
-function Num({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="flex flex-col text-sm gap-1">
-      <span className="text-gray-600">{label}</span>
-      <input
-        type="number"
-        className="border rounded px-2 py-1"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-    </label>
-  );
-}

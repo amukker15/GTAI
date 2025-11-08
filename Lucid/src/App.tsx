@@ -3,6 +3,7 @@ import AppHeader from "./components/AppHeader";
 import MainScreen from "./pages/MainScreen";
 import TruckDetail from "./pages/SpecificTruck";
 import LongTerm from "./pages/LongTerm";
+import DriverSelection from "./pages/DriverSelection";
 import { useEffect } from "react";
 import { useStore } from "./state/store";
 import { DarkModeProvider } from "./context/DarkModeContext";
@@ -30,6 +31,7 @@ export default function App() {
         <AppHeader />
         <Routes>
           <Route path="/" element={<MainScreen />} />
+          <Route path="/driver-studio" element={<DriverSelection />} />
           <Route path="/truck/:truckId" element={<TruckDetail />} />
           <Route path="/long-term/:truckId" element={<LongTerm />} />
         </Routes>

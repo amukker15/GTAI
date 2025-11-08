@@ -96,10 +96,10 @@ export default function AppHeader() {
         key: "driver",
         label: "Driver Studio",
         description: "Deep driver insights",
-        to: firstTruckId ? `/truck/${firstTruckId}` : "/",
+        to: "/driver-studio",
         icon: <Sparkles className="w-5 h-5" />,
-        match: (path) => path.startsWith("/truck/"),
-        disabled: !firstTruckId,
+        match: (path) => path.startsWith("/driver-studio") || path.startsWith("/truck/"),
+        disabled: false,
       },
       {
         key: "long-term",
