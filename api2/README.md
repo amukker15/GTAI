@@ -222,3 +222,40 @@ Linting/formatting is not enforced yet; run `ruff`/`black` locally if you prefer
 - Add authentication (API keys or mTLS) when deploying beyond local dev.
 
 For any other questions, ping the platform channel or open an issue in this repo. Happy shipping! 🚚💤
+
+---
+
+## 10. Snowflake — local live test
+
+If you'd like to validate a live Snowflake connection from your local machine, follow these steps. The project provides `scripts/test_snowflake.py` which attempts to connect and print counts from `DRIVERS` and `DROWSINESS_MEASUREMENTS`.
+
+1. Install deps and activate your venv:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+2. Set environment variables (PowerShell example):
+
+```powershell
+$env:SNOWFLAKE_USER = "FAWAZSABIR"
+$env:SNOWFLAKE_PASSWORD = "<your_password>"
+$env:SNOWFLAKE_ACCOUNT = "NV61963"
+$env:SNOWFLAKE_WAREHOUSE = "COMPUTE_WH"
+$env:SNOWFLAKE_DATABASE = "LCD_ENDPOINTS"
+$env:SNOWFLAKE_SCHEMA = "PUBLIC"
+```
+
+Important: do NOT commit real credentials into the repo. Consider using a local `.env` file (see `.env.example`) with `python-dotenv` for development convenience.
+
+3. Run the test script from the `api2` directory:
+
+```powershell
+python scripts/test_snowflake.py
+```
+
+The script will print the connected user/account and attempt to count rows in the two tables. If the tables do not exist or permissions are insufficient you'll see an error message explaining the problem.
+
+If you want me to wire automatic persistence of analysis results into Snowflake (for example, insert every analysis window into `DROWSINESS_MEASUREMENTS`), tell me the exact table schema (column names and types) or confirm a minimal column set and I'll add the integration.
