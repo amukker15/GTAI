@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PERCLOS Monitor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Inter", "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: #05070d;
+      color: #f5f7ff;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(1rem, 4vw, 3rem);
+      background: radial-gradient(circle at top, rgba(78, 123, 255, 0.25), transparent 55%),
+        linear-gradient(135deg, #03050a 0%, #060a18 55%, #05070d 100%);
+    }
+    .app {
+      width: min(1200px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .header {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    h1 {
+      margin: 0;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3em;
+      color: #bcd7ff;
+    }
+    .tagline {
+      margin: 0;
+      color: #8ea6d9;
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+    }
+    .video-card {
+      background: rgba(6, 10, 18, 0.9);
+      border: 1px solid rgba(118, 158, 255, 0.3);
+      border-radius: 28px;
+      padding: clamp(1rem, 3vw, 1.5rem);
+      box-shadow: 0 25px 55px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(14px);
+    }
+    .video-wrapper {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      background: #020308;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    canvas#overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .status-banner {
+      position: absolute;
+      bottom: 1rem;
+      left: 1rem;
+      padding: 0.5rem 1rem;
+      background: rgba(12, 16, 28, 0.85);
+      border: 1px solid rgba(190, 223, 255, 0.4);
+      border-radius: 999px;
+      font-size: 0.85rem;
+      backdrop-filter: blur(6px);
+      letter-spacing: 0.05em;
+    }
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      background: rgba(6, 10, 18, 0.9);
+      border: 1px solid rgba(118, 158, 255, 0.3);
+      border-radius: 999px;
+      padding: 0.5rem;
+    }
+    .video-card .controls {
+      margin-top: 1rem;
+    }
+    button {
+      cursor: pointer;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #05070d;
+      background: linear-gradient(135deg, #bfe0ff, #7ab2ff);
+      transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+      box-shadow: 0 12px 25px rgba(74, 144, 255, 0.35);
+    }
+    button[disabled] {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    button:not([disabled]):active {
+      transform: scale(0.97);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-top: 0.5rem;
+    }
+    .metric-section {
+      background: rgba(6, 10, 18, 0.9);
+      border: 1px solid rgba(94, 134, 209, 0.4);
+      border-radius: 20px;
+      padding: 1rem;
+      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: transform 160ms ease, border-color 160ms ease;
+    }
+    .metric-section:hover {
+      transform: translateY(-2px);
+      border-color: rgba(140, 178, 255, 0.6);
+    }
+    .section-title {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: #8fb4ff;
+    }
+    .section-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.75rem;
+    }
+    .readout {
+      padding: 0.75rem 0.9rem;
+      background: rgba(14, 19, 29, 0.85);
+      border: 1px solid rgba(158, 197, 255, 0.2);
+      border-radius: 14px;
+      font-size: 0.85rem;
+      backdrop-filter: blur(6px);
+    }
+    .readout-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8ea6d9;
+    }
+    .readout-value {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #e9f2ff;
+    }
+    .window-notes {
+      margin-top: 0.5rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+      font-size: 0.8rem;
+      color: #8ea6d9;
+      font-variant-numeric: tabular-nums;
+    }
+    .window-note {
+      background: rgba(8, 12, 19, 0.8);
+      border: 1px solid rgba(75, 111, 173, 0.4);
+      border-radius: 10px;
+      padding: 0.6rem 0.9rem;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+    details.debug {
+      background: rgba(6, 10, 18, 0.9);
+      border: 1px solid rgba(74, 101, 142, 0.6);
+      border-radius: 20px;
+      padding: 1rem 1.25rem;
+      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.35);
+    }
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #bcd7ff;
+      list-style: none;
+      letter-spacing: 0.1em;
+    }
+    details summary::marker {
+      display: none;
+    }
+    #histogramCanvas {
+      width: 100%;
+      max-width: 360px;
+      height: 140px;
+      margin-top: 0.5rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    #marHistogramCanvas,
+    #pitchHistogramCanvas {
+      width: 100%;
+      max-width: 360px;
+      height: 140px;
+      margin-top: 0.5rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .hist-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem;
+      margin-top: 0.75rem;
+    }
+    .hist-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8ea6d9;
+      margin-top: 0.25rem;
+    }
+    @media (max-width: 720px) {
+      body {
+        padding: 1rem;
+      }
+      .controls {
+        border-radius: 20px;
+        padding: 0.5rem;
+      }
+      button {
+        flex: 1 1 calc(50% - 0.5rem);
+      }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script async src="https://cdn.jsdelivr.net/npm/@opencv/cv@4.9.0/opencv.js"></script>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>Lucid</h1>
+      <p class="tagline">Realtime vigilance insights · Eyes · Mouth · Head pose</p>
+    </header>
+    <div class="video-card">
+      <div class="video-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="status-banner" id="statusBanner">Camera idle</div>
+      </div>
+      <div class="controls">
+        <button id="startBtn">Start Camera</button>
+        <button id="perclosBtn" disabled>Compute 30s PERCLOS</button>
+        <button id="yawnBtn" disabled>Compute 30s Yawn</button>
+        <button id="headPoseBtn" disabled>Compute 30s Head Pose</button>
+      </div>
+    </div>
+    <div class="metrics">
+      <section class="metric-section">
+        <div class="section-title">PERCLOS</div>
+        <div class="section-grid">
+          <div class="readout">
+            <div class="readout-label">PERCLOS_30s</div>
+            <div class="readout-value" id="perclosValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">EAR</div>
+            <div class="readout-value" id="earValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Threshold T</div>
+            <div class="readout-value" id="thresholdValue">0.21</div>
+          </div>
+        </div>
+      </section>
+      <section class="metric-section">
+        <div class="section-title">Yawning / MAR</div>
+        <div class="section-grid">
+          <div class="readout">
+            <div class="readout-label">MAR</div>
+            <div class="readout-value" id="marValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">MAR Threshold Tm</div>
+            <div class="readout-value" id="marThresholdValue">0.60</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Yawn Count (30s)</div>
+            <div class="readout-value" id="yawnCountValue">0</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Yawn Time (30s)</div>
+            <div class="readout-value" id="yawnTimeValue">0.0s</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Yawn Duty (30s)</div>
+            <div class="readout-value" id="yawnDutyValue">0%</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Yawn Peak</div>
+            <div class="readout-value" id="yawnPeakValue">--</div>
+          </div>
+        </div>
+      </section>
+      <section class="metric-section">
+        <div class="section-title">Head Pose</div>
+        <div class="section-grid">
+          <div class="readout">
+            <div class="readout-label">Yaw °</div>
+            <div class="readout-value" id="yawValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Pitch °</div>
+            <div class="readout-value" id="pitchValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Roll °</div>
+            <div class="readout-value" id="rollValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">PitchDown °</div>
+            <div class="readout-value" id="pitchDownValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Pitch Threshold Tp</div>
+            <div class="readout-value" id="pitchThresholdValue">15</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Avg PitchDown (30s)</div>
+            <div class="readout-value" id="avgPitchDownValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Max PitchDown (30s)</div>
+            <div class="readout-value" id="maxPitchDownValue">--</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Droop Time (30s)</div>
+            <div class="readout-value" id="droopTimeValue">0.0s</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Droop Duty (30s)</div>
+            <div class="readout-value" id="droopDutyValue">0%</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Nod Count (30s)</div>
+            <div class="readout-value" id="nodCountValue">0</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Nod Rate (/min)</div>
+            <div class="readout-value" id="nodRateValue">0</div>
+          </div>
+        </div>
+      </section>
+      <section class="metric-section">
+        <div class="section-title">System</div>
+        <div class="section-grid">
+          <div class="readout">
+            <div class="readout-label">FPS</div>
+            <div class="readout-value" id="fpsValue">0</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Confidence</div>
+            <div class="readout-value" id="confidenceValue">Low</div>
+          </div>
+          <div class="readout">
+            <div class="readout-label">Session Time</div>
+            <div class="readout-value" id="stopwatchValue">00:00</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="window-notes">
+      <span class="window-note" id="perclosInterval">PERCLOS window: --</span>
+      <span class="window-note" id="yawnInterval">Yawn window: --</span>
+      <span class="window-note" id="headPoseInterval">Head Pose window: --</span>
+    </div>
+    <details class="debug">
+      <summary>Debug</summary>
+      <div class="hist-group">
+        <div>
+          <div class="hist-label">EAR Histogram</div>
+          <canvas id="histogramCanvas" width="320" height="140"></canvas>
+        </div>
+        <div>
+          <div class="hist-label">MAR Histogram</div>
+          <canvas id="marHistogramCanvas" width="320" height="140"></canvas>
+        </div>
+        <div>
+          <div class="hist-label">PitchDown Histogram</div>
+          <canvas id="pitchHistogramCanvas" width="320" height="140"></canvas>
+        </div>
+      </div>
+    </details>
+  </main>
+  <script>
+    (() => {
+      const CONFIG = {
+        histBins: 32,
+        histRangeMin: 0.0,
+        histRangeMax: 0.5,
+        histWindowMs: 120000,
+        marHistBins: 32,
+        marHistRangeMin: 0.2,
+        marHistRangeMax: 1.0,
+        marHistWindowMs: 120000,
+        perclosWindowMs: 30000,
+        thresholdClampMin: 0.16,
+        thresholdClampMax: 0.30,
+        thresholdDefault: 0.21,
+        thresholdRecalcMs: 3000,
+        thresholdEmaAlpha: 0.3,
+        marThresholdDefault: 0.55,
+        marThresholdClampMin: 0.45,
+        marThresholdClampMax: 0.75,
+        marThresholdRecalcMs: 3000,
+        marThresholdEmaAlpha: 0.3,
+        earEmaAlpha: 0.3,
+        marEmaAlpha: 0.3,
+        fpsEmaAlpha: 0.2,
+        debounceMs: 120,
+        yawnStartHoldMs: 800,
+        yawnEndHoldMs: 300,
+        yawnRefractoryMs: 2000,
+        confidenceThreshold: 0.65,
+        downPitchDeg: 22,
+        pitchHistBins: 32,
+        pitchHistRangeMin: 0,
+        pitchHistRangeMax: 40,
+        pitchHistWindowMs: 120000,
+        pitchThresholdDefault: 15,
+        pitchThresholdClampMin: 10,
+        pitchThresholdClampMax: 25,
+        pitchThresholdRecalcMs: 3000,
+        pitchThresholdEmaAlpha: 0.3,
+        droopDebounceMs: 150,
+        poseEmaAlpha: 0.15,
+        pitchDownEmaAlpha: 0.2,
+        nodPeakMarginDeg: 3,
+        nodMinAmplitudeDeg: 5,
+        nodMinDurationMs: 300,
+        nodMaxDurationMs: 2500,
+        nodMinPeriodMs: 3000,
+        nodRefractoryMs: 1500,
+        axisLengthModel: 50,
+        stopwatchIntervalMs: 250
+      };
+
+      const POSE_MODEL = [
+        { index: 1, coords: [0.0, 0.0, 0.0] },
+        { index: 152, coords: [0.0, -63.6, -12.5] },
+        { index: 33, coords: [-43.3, 32.7, -26.0] },
+        { index: 263, coords: [43.3, 32.7, -26.0] },
+        { index: 61, coords: [-28.9, -28.9, -24.1] },
+        { index: 291, coords: [28.9, -28.9, -24.1] }
+      ];
+
+      // DOM refs
+      const videoEl = document.getElementById('video');
+      const overlay = document.getElementById('overlay');
+      const overlayCtx = overlay.getContext('2d');
+      const histogramCanvas = document.getElementById('histogramCanvas');
+      const histogramCtx = histogramCanvas.getContext('2d');
+      const marHistogramCanvas = document.getElementById('marHistogramCanvas');
+      const marHistogramCtx = marHistogramCanvas.getContext('2d');
+      const pitchHistogramCanvas = document.getElementById('pitchHistogramCanvas');
+      const pitchHistogramCtx = pitchHistogramCanvas.getContext('2d');
+      const startBtn = document.getElementById('startBtn');
+      const perclosBtn = document.getElementById('perclosBtn');
+      const yawnBtn = document.getElementById('yawnBtn');
+      const headPoseBtn = document.getElementById('headPoseBtn');
+      const statusBanner = document.getElementById('statusBanner');
+      const perclosValueEl = document.getElementById('perclosValue');
+      const earValueEl = document.getElementById('earValue');
+      const thresholdValueEl = document.getElementById('thresholdValue');
+      const marValueEl = document.getElementById('marValue');
+      const marThresholdValueEl = document.getElementById('marThresholdValue');
+      const yawValueEl = document.getElementById('yawValue');
+      const pitchValueEl = document.getElementById('pitchValue');
+      const rollValueEl = document.getElementById('rollValue');
+      const pitchDownValueEl = document.getElementById('pitchDownValue');
+      const pitchThresholdValueEl = document.getElementById('pitchThresholdValue');
+      const fpsValueEl = document.getElementById('fpsValue');
+      const confidenceValueEl = document.getElementById('confidenceValue');
+      const yawnCountValueEl = document.getElementById('yawnCountValue');
+      const yawnTimeValueEl = document.getElementById('yawnTimeValue');
+      const yawnDutyValueEl = document.getElementById('yawnDutyValue');
+      const yawnPeakValueEl = document.getElementById('yawnPeakValue');
+      const avgPitchDownValueEl = document.getElementById('avgPitchDownValue');
+      const maxPitchDownValueEl = document.getElementById('maxPitchDownValue');
+      const droopTimeValueEl = document.getElementById('droopTimeValue');
+      const droopDutyValueEl = document.getElementById('droopDutyValue');
+      const nodCountValueEl = document.getElementById('nodCountValue');
+      const nodRateValueEl = document.getElementById('nodRateValue');
+      const stopwatchValueEl = document.getElementById('stopwatchValue');
+      const perclosIntervalEl = document.getElementById('perclosInterval');
+      const yawnIntervalEl = document.getElementById('yawnInterval');
+      const headPoseIntervalEl = document.getElementById('headPoseInterval');
+
+      // State containers
+      let faceMesh = null;
+      let camera = null;
+      let emaEar = null;
+      let emaMar = null;
+      let threshold = CONFIG.thresholdDefault;
+      let marThreshold = CONFIG.marThresholdDefault;
+      let pitchThreshold = CONFIG.pitchThresholdDefault;
+      let lastThresholdEval = 0;
+      let lastMarThresholdEval = 0;
+      let lastPitchThresholdEval = 0;
+      let fpsEma = 0;
+      let lastFrameTime = 0;
+      let confidenceScore = 0;
+      let lastFaceDetectTime = 0;
+      const histogram = new Array(CONFIG.histBins).fill(0);
+      const earBuffer = [];
+      const histBinSize = (CONFIG.histRangeMax - CONFIG.histRangeMin) / CONFIG.histBins;
+      const stateTimeline = [{ time: performance.now(), state: false }];
+      const marHistogram = new Array(CONFIG.marHistBins).fill(0);
+      const marBuffer = [];
+      const marHistBinSize =
+        (CONFIG.marHistRangeMax - CONFIG.marHistRangeMin) / CONFIG.marHistBins;
+      const yawnStateTimeline = [{ time: performance.now(), state: false }];
+      const yawnEvents = [];
+      const pitchHistogram = new Array(CONFIG.pitchHistBins).fill(0);
+      const pitchBuffer = [];
+      const pitchHistBinSize =
+        (CONFIG.pitchHistRangeMax - CONFIG.pitchHistRangeMin) / CONFIG.pitchHistBins;
+      const droopTimeline = [{ time: performance.now(), state: false }];
+      const pitchValueTimeline = [{ time: performance.now(), value: 0 }];
+      const nodEvents = [];
+      let debouncedState = false;
+      let pendingState = false;
+      let pendingSince = performance.now();
+      let yawnActive = false;
+      let yawnStartTime = 0;
+      let yawnCandidateStart = null;
+      let yawnEndCandidateStart = null;
+      let yawnCurrentPeak = 0;
+      let lastYawnEndTime = -Infinity;
+      let sessionStartTime = null;
+      let stopwatchTimer = null;
+      let yawEma = null;
+      let pitchEma = null;
+      let rollEma = null;
+      let pitchDownEma = null;
+      let droopState = false;
+      let droopPendingState = false;
+      let droopPendingSince = performance.now();
+      let nodActive = false;
+      let nodCandidate = null;
+      let lastNodTime = -Infinity;
+      let cvReady = false;
+      let cvReadyPromise = null;
+
+      pitchThresholdValueEl.textContent = pitchThreshold.toFixed(1) + '°';
+
+      startBtn.addEventListener('click', handleStartCamera);
+      perclosBtn.addEventListener('click', () => {
+        const ratio = computePerclosWindow(CONFIG.perclosWindowMs);
+        perclosValueEl.textContent = Number.isFinite(ratio)
+          ? (ratio * 100).toFixed(1) + '%'
+          : '--';
+        perclosIntervalEl.textContent = formatWindowLabel('PERCLOS', CONFIG.perclosWindowMs);
+      });
+
+      yawnBtn.addEventListener('click', () => {
+        const metrics = computeYawnWindow30s(CONFIG.perclosWindowMs);
+        yawnCountValueEl.textContent = metrics.count;
+        yawnTimeValueEl.textContent = metrics.timeSeconds.toFixed(1) + 's';
+        yawnDutyValueEl.textContent = (metrics.duty * 100).toFixed(1) + '%';
+        yawnPeakValueEl.textContent = metrics.peak ? metrics.peak.toFixed(3) : '--';
+        yawnIntervalEl.textContent = formatWindowLabel('Yawn', CONFIG.perclosWindowMs);
+      });
+
+      headPoseBtn.addEventListener('click', () => {
+        const metrics = computeHeadPoseWindow30s(CONFIG.perclosWindowMs);
+        avgPitchDownValueEl.textContent = metrics.avgPitchDown.toFixed(1) + '°';
+        maxPitchDownValueEl.textContent = metrics.maxPitchDown.toFixed(1) + '°';
+        droopTimeValueEl.textContent = metrics.droopTime.toFixed(1) + 's';
+        droopDutyValueEl.textContent = (metrics.droopDuty * 100).toFixed(1) + '%';
+        nodCountValueEl.textContent = metrics.nodCount.toString();
+        nodRateValueEl.textContent = metrics.nodRate.toFixed(1);
+        headPoseIntervalEl.textContent = formatWindowLabel('Head pose', CONFIG.perclosWindowMs);
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (camera && camera.stop) camera.stop();
+        if (videoEl && videoEl.srcObject) {
+          videoEl.srcObject.getTracks().forEach((track) => track.stop());
+        }
+        if (stopwatchTimer) clearInterval(stopwatchTimer);
+      });
+
+      function setStatus(msg) {
+        statusBanner.textContent = msg;
+      }
+
+      async function handleStartCamera() {
+        if (camera) return;
+        startBtn.disabled = true;
+        setStatus('Requesting camera...');
+        try {
+          await ensureFaceMesh();
+          ensureCvReady();
+          camera = new Camera(videoEl, {
+            onFrame: async () => {
+              await faceMesh.send({ image: videoEl });
+            },
+            facingMode: 'user',
+            width: 1280,
+            height: 720
+          });
+          await camera.start();
+          perclosBtn.disabled = false;
+          yawnBtn.disabled = false;
+          headPoseBtn.disabled = false;
+          startStopwatch();
+          setStatus('Camera running');
+        } catch (err) {
+          console.error(err);
+          setStatus('Camera error: ' + err.message);
+          startBtn.disabled = false;
+        }
+      }
+
+      async function ensureFaceMesh() {
+        if (faceMesh) return;
+        const FaceMeshNamespace = window.FaceMesh || window.faceMesh || {};
+        const FaceMeshCtor =
+          typeof FaceMeshNamespace === 'function'
+            ? FaceMeshNamespace
+            : FaceMeshNamespace.FaceMesh;
+        if (!FaceMeshCtor) throw new Error('FaceMesh library failed to load');
+        faceMesh = new FaceMeshCtor({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+        faceMesh.onResults(onResults);
+      }
+
+      function ensureCvReady() {
+        if (cvReady) return Promise.resolve();
+        if (cvReadyPromise) return cvReadyPromise;
+        cvReadyPromise = new Promise((resolve) => {
+          const waitForCv = () => {
+            if (window.cv && cv.Mat) {
+              cvReady = true;
+              resolve();
+            } else {
+              requestAnimationFrame(waitForCv);
+            }
+          };
+          waitForCv();
+        });
+        return cvReadyPromise;
+      }
+
+      function onResults(results) {
+        const now = performance.now();
+        resizeOverlay();
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+        const landmarks = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
+        const hasFace = Boolean(landmarks);
+        let headDownForGating = false;
+        let poseStable = false;
+        let closedState = debouncedState;
+
+        if (hasFace) {
+          lastFaceDetectTime = now;
+          confidenceScore = computeConfidence(landmarks);
+          const isHighConfidence = confidenceScore >= CONFIG.confidenceThreshold;
+          confidenceValueEl.textContent = isHighConfidence ? 'OK' : 'Low';
+          drawEyeAnnotations(landmarks);
+          drawMouthAnnotations(landmarks);
+          drawPoseKeypoints(landmarks);
+
+          let poseSample = null;
+          poseStable = false;
+          const poseResult = getPoseSolvePnP(landmarks, overlay.width, overlay.height);
+          if (poseResult) {
+            const { yaw, pitch, roll, pitchDown, rotation, translation, cameraMatrix } = poseResult;
+            yawEma = yawEma === null ? yaw : yawEma + CONFIG.poseEmaAlpha * (yaw - yawEma);
+            pitchEma = pitchEma === null ? pitch : pitchEma + CONFIG.poseEmaAlpha * (pitch - pitchEma);
+            rollEma = rollEma === null ? roll : rollEma + CONFIG.poseEmaAlpha * (roll - rollEma);
+            pitchDownEma =
+              pitchDownEma === null
+                ? pitchDown
+                : pitchDownEma + CONFIG.pitchDownEmaAlpha * (pitchDown - pitchDownEma);
+
+            const yawDisplay = yawEma ?? yaw;
+            const pitchDisplay = pitchEma ?? pitch;
+            const rollDisplay = rollEma ?? roll;
+            const smoothPitchDown = pitchDownEma ?? pitchDown;
+            yawValueEl.textContent = Number.isFinite(yawDisplay)
+              ? yawDisplay.toFixed(1) + '°'
+              : '--';
+            pitchValueEl.textContent = Number.isFinite(pitchDisplay)
+              ? pitchDisplay.toFixed(1) + '°'
+              : '--';
+            rollValueEl.textContent = Number.isFinite(rollDisplay)
+              ? rollDisplay.toFixed(1) + '°'
+              : '--';
+            pitchDownValueEl.textContent = Number.isFinite(smoothPitchDown)
+              ? smoothPitchDown.toFixed(1) + '°'
+              : '--';
+            poseSample = smoothPitchDown;
+
+            const yawBounded = Math.abs(yawEma ?? yaw) < 40;
+            const rollBounded = Math.abs(rollEma ?? roll) < 25;
+            poseStable = isHighConfidence && yawBounded && rollBounded;
+
+            headDownForGating = Number.isFinite(smoothPitchDown)
+              ? smoothPitchDown > CONFIG.downPitchDeg
+              : false;
+            drawPoseAxes(rotation, translation, cameraMatrix);
+          } else {
+            yawValueEl.textContent = '--';
+            pitchValueEl.textContent = '--';
+            rollValueEl.textContent = '--';
+            const fallbackPitch = estimatePitchFallback(landmarks);
+            poseSample = fallbackPitch;
+            pitchDownValueEl.textContent = Number.isFinite(fallbackPitch)
+              ? fallbackPitch.toFixed(1) + '°'
+              : '--';
+            headDownForGating = Number.isFinite(fallbackPitch)
+              ? fallbackPitch > CONFIG.downPitchDeg
+              : false;
+          }
+
+          if (Number.isFinite(poseSample)) {
+            recordPitchValue(poseSample, now);
+            classifyDroopWithDebounce(poseSample, now);
+            if (poseStable && now - lastPitchThresholdEval >= CONFIG.pitchThresholdRecalcMs) {
+              updatePitchHistogram(poseSample, now);
+              updatePitchThreshold();
+              lastPitchThresholdEval = now;
+            }
+            detectNods(poseSample, now, poseStable);
+          } else {
+            classifyDroopWithDebounce(NaN, now);
+          }
+
+          const rawEar = computeEAR(landmarks);
+          if (Number.isFinite(rawEar)) {
+            emaEar = emaEar === null ? rawEar : emaEar + CONFIG.earEmaAlpha * (rawEar - emaEar);
+            earValueEl.textContent = emaEar.toFixed(3);
+            if (isHighConfidence && emaEar !== null) {
+              updateHistogram(emaEar, now);
+              if (!headDownForGating && now - lastThresholdEval >= CONFIG.thresholdRecalcMs) {
+                updateThreshold();
+                lastThresholdEval = now;
+              }
+            }
+            closedState = classifyClosedWithDebounce(emaEar, now);
+          } else {
+            earValueEl.textContent = '--';
+          }
+
+          const rawMar = computeMAR(landmarks);
+          if (Number.isFinite(rawMar)) {
+            emaMar = emaMar === null ? rawMar : emaMar + CONFIG.marEmaAlpha * (rawMar - emaMar);
+            marValueEl.textContent = emaMar.toFixed(3);
+            if (isHighConfidence && emaMar !== null) {
+              updateMarHistogram(emaMar, now);
+              if (!headDownForGating && now - lastMarThresholdEval >= CONFIG.marThresholdRecalcMs) {
+                updateMarThreshold();
+                lastMarThresholdEval = now;
+              }
+            }
+            detectYawnEvents(emaMar, now, isHighConfidence);
+          } else {
+            marValueEl.textContent = '--';
+            detectYawnEvents(NaN, now, false);
+          }
+
+          setStatus(
+            `${closedState ? 'Eyes CLOSED' : 'Eyes open'} · ${yawnActive ? 'Yawning' : 'Calm'} · ${
+              droopState ? 'Head down' : 'Head neutral'
+            }`
+          );
+        } else {
+          confidenceScore = 0;
+          confidenceValueEl.textContent = 'Low';
+          earValueEl.textContent = '--';
+          marValueEl.textContent = '--';
+          yawValueEl.textContent = '--';
+          pitchValueEl.textContent = '--';
+          rollValueEl.textContent = '--';
+          pitchDownValueEl.textContent = '--';
+          detectYawnEvents(NaN, now, false);
+          if (now - lastFaceDetectTime > 2000) {
+            setStatus('No face detected');
+          }
+        }
+
+        updateFps(now);
+        renderDebugHistograms();
+      }
+
+      function resizeOverlay() {
+        const displayWidth = videoEl.videoWidth || 1280;
+        const displayHeight = videoEl.videoHeight || 720;
+        if (overlay.width !== displayWidth || overlay.height !== displayHeight) {
+          overlay.width = displayWidth;
+          overlay.height = displayHeight;
+        }
+      }
+
+      function computeConfidence(landmarks) {
+        // Cheap heuristic: require iris points to exist and eyelid separation > noise floor
+        const irisIndices = [468, 469, 470, 471, 472, 473];
+        const irisVisible = irisIndices.every((idx) => !!landmarks[idx]);
+        const lidSpread = Math.abs(landmarks[159].y - landmarks[145].y);
+        const score = irisVisible ? Math.min(1, 0.4 + lidSpread * 120) : lidSpread * 80;
+        return Math.max(0, Math.min(1, score));
+      }
+
+      function drawEyeAnnotations(landmarks) {
+        const eyes = {
+          left: { outer: 33, inner: 133, upper1: 160, lower1: 144, upper2: 158, lower2: 153 },
+          right: { outer: 263, inner: 362, upper1: 387, lower1: 373, upper2: 385, lower2: 380 }
+        };
+        overlayCtx.save();
+        overlayCtx.lineWidth = 2;
+        overlayCtx.strokeStyle = '#7ed3ff';
+        overlayCtx.fillStyle = '#7ed3ff';
+        Object.values(eyes).forEach((eye) => {
+          const points = [eye.outer, eye.inner, eye.upper1, eye.lower1, eye.upper2, eye.lower2];
+          points.forEach((idx) => {
+            const pt = landmarks[idx];
+            overlayCtx.beginPath();
+            overlayCtx.arc(pt.x * overlay.width, pt.y * overlay.height, 3, 0, Math.PI * 2);
+            overlayCtx.fill();
+          });
+          drawSegment(landmarks[eye.outer], landmarks[eye.inner]);
+          drawSegment(landmarks[eye.upper1], landmarks[eye.lower1]);
+          drawSegment(landmarks[eye.upper2], landmarks[eye.lower2]);
+        });
+        overlayCtx.restore();
+      }
+
+      function drawSegment(a, b) {
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(a.x * overlay.width, a.y * overlay.height);
+        overlayCtx.lineTo(b.x * overlay.width, b.y * overlay.height);
+        overlayCtx.stroke();
+      }
+
+      function drawMouthAnnotations(landmarks) {
+        const pts = [61, 291, 13, 14, 82, 87, 312, 402];
+        overlayCtx.save();
+        overlayCtx.lineWidth = 2;
+        overlayCtx.strokeStyle = '#ffb347';
+        overlayCtx.fillStyle = '#ffb347';
+        pts.forEach((idx) => {
+          const pt = landmarks[idx];
+          overlayCtx.beginPath();
+          overlayCtx.arc(pt.x * overlay.width, pt.y * overlay.height, 3, 0, Math.PI * 2);
+          overlayCtx.fill();
+        });
+        [[61, 291], [13, 14], [82, 87], [312, 402]].forEach(([aIdx, bIdx]) => {
+          drawSegment(landmarks[aIdx], landmarks[bIdx]);
+        });
+        overlayCtx.restore();
+      }
+
+      function drawPoseKeypoints(landmarks) {
+        overlayCtx.save();
+        overlayCtx.fillStyle = '#9ef9a3';
+        POSE_MODEL.forEach(({ index }) => {
+          const pt = landmarks[index];
+          if (!pt) return;
+          overlayCtx.beginPath();
+          overlayCtx.rect(pt.x * overlay.width - 3, pt.y * overlay.height - 3, 6, 6);
+          overlayCtx.fill();
+        });
+        overlayCtx.restore();
+      }
+
+      function drawPoseAxes(rotation, translation, cameraMatrix) {
+        if (!rotation || !translation) return;
+        const origin2d = projectPoint([0, 0, 0], rotation, translation, cameraMatrix);
+        if (!origin2d) return;
+        const axes = [
+          { dir: [CONFIG.axisLengthModel, 0, 0], color: '#ff4d4d' },
+          { dir: [0, CONFIG.axisLengthModel, 0], color: '#32ff96' },
+          { dir: [0, 0, CONFIG.axisLengthModel], color: '#4b8bff' }
+        ];
+        overlayCtx.save();
+        overlayCtx.lineWidth = 3;
+        axes.forEach((axis) => {
+          const endpoint = projectPoint(axis.dir, rotation, translation, cameraMatrix);
+          if (!endpoint) return;
+          overlayCtx.strokeStyle = axis.color;
+          overlayCtx.beginPath();
+          overlayCtx.moveTo(origin2d.x, origin2d.y);
+          overlayCtx.lineTo(endpoint.x, endpoint.y);
+          overlayCtx.stroke();
+        });
+        overlayCtx.restore();
+      }
+
+      function projectPoint(point, rotation, translation, cameraMatrix) {
+        const Xc =
+          rotation[0][0] * point[0] +
+          rotation[0][1] * point[1] +
+          rotation[0][2] * point[2] +
+          translation[0];
+        const Yc =
+          rotation[1][0] * point[0] +
+          rotation[1][1] * point[1] +
+          rotation[1][2] * point[2] +
+          translation[1];
+        const Zc =
+          rotation[2][0] * point[0] +
+          rotation[2][1] * point[1] +
+          rotation[2][2] * point[2] +
+          translation[2];
+        if (Math.abs(Zc) < 1e-3) return null;
+        const fx = cameraMatrix[0][0];
+        const fy = cameraMatrix[1][1];
+        const cx = cameraMatrix[0][2];
+        const cy = cameraMatrix[1][2];
+        const u = (fx * Xc) / Zc + cx;
+        const v = (fy * Yc) / Zc + cy;
+        return { x: u, y: v };
+      }
+
+      function matToJs(mat, rows, cols) {
+        const data = mat.data64F || mat.data32F;
+        const out = [];
+        for (let r = 0; r < rows; r++) {
+          const row = [];
+          for (let c = 0; c < cols; c++) {
+            row.push(data[r * cols + c]);
+          }
+          out.push(row);
+        }
+        return out;
+      }
+
+      function estimatePitchFallback(landmarks) {
+        const top = landmarks[10];
+        const bottom = landmarks[152];
+        if (!top || !bottom) return 0;
+        const dy = bottom.y - top.y;
+        const dz = bottom.z - top.z;
+        const angle = Math.atan2(dz, dy);
+        return Math.abs((angle * 180) / Math.PI);
+      }
+
+      function computeEAR(landmarks) {
+        const left = eyeEAR(landmarks, 33, 133, 160, 144, 158, 153);
+        const right = eyeEAR(landmarks, 263, 362, 387, 373, 385, 380);
+        return (left + right) / 2;
+      }
+
+      function computeMAR(landmarks) {
+        const mouthLeft = landmarks[61];
+        const mouthRight = landmarks[291];
+        const mouthWidth = distance(mouthLeft, mouthRight);
+        if (!mouthWidth) return NaN;
+        const innerPairs = [
+          [13, 14],
+          [82, 87],
+          [312, 402]
+        ];
+        let sum = 0;
+        let count = 0;
+        innerPairs.forEach(([upperIdx, lowerIdx]) => {
+          const gap = distance(landmarks[upperIdx], landmarks[lowerIdx]);
+          if (gap) {
+            sum += gap;
+            count += 1;
+          }
+        });
+        if (!count) return NaN;
+        const avgGap = sum / count;
+        return avgGap / (2 * mouthWidth);
+      }
+
+      function getPoseSolvePnP(landmarks, width, height) {
+        if (!window.cv || !cvReady) return null;
+        const fx = width * 1.2;
+        const fy = height * 1.2;
+        const cx = width / 2;
+        const cy = height / 2;
+        const cameraMatrixArr = [fx, 0, cx, 0, fy, cy, 0, 0, 1];
+        const cameraMatrix = [
+          [fx, 0, cx],
+          [0, fy, cy],
+          [0, 0, 1]
+        ];
+
+        const imagePoints = [];
+        const modelPoints = [];
+        for (const entry of POSE_MODEL) {
+          const lm = landmarks[entry.index];
+          if (!lm) return null;
+          imagePoints.push(lm.x * width, lm.y * height);
+          modelPoints.push(entry.coords[0], entry.coords[1], entry.coords[2]);
+        }
+
+        const objectMat = cv.matFromArray(POSE_MODEL.length, 3, cv.CV_64F, modelPoints);
+        const imageMat = cv.matFromArray(POSE_MODEL.length, 2, cv.CV_64F, imagePoints);
+        const cameraMat = cv.matFromArray(3, 3, cv.CV_64F, cameraMatrixArr);
+        const distCoeffs = cv.Mat.zeros(4, 1, cv.CV_64F);
+        const rvec = new cv.Mat();
+        const tvec = new cv.Mat();
+
+        let success = false;
+        try {
+          success = cv.solvePnP(
+            objectMat,
+            imageMat,
+            cameraMat,
+            distCoeffs,
+            rvec,
+            tvec,
+            false,
+            cv.SOLVEPNP_ITERATIVE
+          );
+        } catch (err) {
+          success = false;
+        }
+
+        if (!success) {
+          objectMat.delete();
+          imageMat.delete();
+          cameraMat.delete();
+          distCoeffs.delete();
+          rvec.delete();
+          tvec.delete();
+          return null;
+        }
+
+        const rotationMat = new cv.Mat();
+        cv.Rodrigues(rvec, rotationMat);
+
+        const rotation = matToJs(rotationMat, 3, 3);
+        const translation = Array.from(tvec.data64F);
+
+        const angles = rotationMatrixToEuler(rotation);
+        const pitchDown = angles.pitch < 0 ? -angles.pitch : 0;
+
+        objectMat.delete();
+        imageMat.delete();
+        cameraMat.delete();
+        distCoeffs.delete();
+        rvec.delete();
+        tvec.delete();
+        rotationMat.delete();
+
+        return {
+          yaw: angles.yaw,
+          pitch: angles.pitch,
+          roll: angles.roll,
+          pitchDown,
+          rotation,
+          translation,
+          cameraMatrix
+        };
+      }
+
+      function eyeEAR(landmarks, cornerOuter, cornerInner, upper1, lower1, upper2, lower2) {
+        const horizontal = distance(landmarks[cornerOuter], landmarks[cornerInner]);
+        const vertical1 = distance(landmarks[upper1], landmarks[lower1]);
+        const vertical2 = distance(landmarks[upper2], landmarks[lower2]);
+        if (!horizontal) return 0;
+        return (vertical1 + vertical2) / (2 * horizontal);
+      }
+
+      function distance(a, b) {
+        if (!a || !b) return 0;
+        return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      }
+
+      function updateHistogram(value, timestamp) {
+        if (value < CONFIG.histRangeMin || value > CONFIG.histRangeMax) return;
+        const idx = Math.min(
+          CONFIG.histBins - 1,
+          Math.max(0, Math.floor((value - CONFIG.histRangeMin) / histBinSize))
+        );
+        histogram[idx] += 1;
+        earBuffer.push({ time: timestamp, bin: idx });
+        const cutoff = timestamp - CONFIG.histWindowMs;
+        while (earBuffer.length && earBuffer[0].time < cutoff) {
+          const expired = earBuffer.shift();
+          histogram[expired.bin] = Math.max(0, histogram[expired.bin] - 1);
+        }
+      }
+
+      function updateThreshold() {
+        const topBins = findTopBinsGeneric(histogram);
+        if (!topBins) return;
+        const [first, second] = topBins;
+        if (second.count === 0) return;
+        const start = Math.min(first.idx, second.idx);
+        const end = Math.max(first.idx, second.idx);
+        let valleyIdx = start;
+        let valleyCount = Infinity;
+        for (let i = start; i <= end; i++) {
+          if (histogram[i] < valleyCount) {
+            valleyCount = histogram[i];
+            valleyIdx = i;
+          }
+        }
+        const rawThreshold = CONFIG.histRangeMin + (valleyIdx + 0.5) * histBinSize;
+        const clamped = clamp(rawThreshold, CONFIG.thresholdClampMin, CONFIG.thresholdClampMax);
+        threshold = threshold + CONFIG.thresholdEmaAlpha * (clamped - threshold);
+        thresholdValueEl.textContent = threshold.toFixed(3);
+      }
+
+      function updateMarHistogram(value, timestamp) {
+        if (value < CONFIG.marHistRangeMin || value > CONFIG.marHistRangeMax) return;
+        const idx = Math.min(
+          CONFIG.marHistBins - 1,
+          Math.max(0, Math.floor((value - CONFIG.marHistRangeMin) / marHistBinSize))
+        );
+        marHistogram[idx] += 1;
+        marBuffer.push({ time: timestamp, bin: idx });
+        const cutoff = timestamp - CONFIG.marHistWindowMs;
+        while (marBuffer.length && marBuffer[0].time < cutoff) {
+          const expired = marBuffer.shift();
+          marHistogram[expired.bin] = Math.max(0, marHistogram[expired.bin] - 1);
+        }
+      }
+
+      function updateMarThreshold() {
+        const topBins = findTopBinsGeneric(marHistogram);
+        if (!topBins) return;
+        const [first, second] = topBins;
+        if (second.count === 0) return;
+        const start = Math.min(first.idx, second.idx);
+        const end = Math.max(first.idx, second.idx);
+        let valleyIdx = start;
+        let valleyCount = Infinity;
+        for (let i = start; i <= end; i++) {
+          if (marHistogram[i] < valleyCount) {
+            valleyCount = marHistogram[i];
+            valleyIdx = i;
+          }
+        }
+        const rawThreshold =
+          CONFIG.marHistRangeMin + (valleyIdx + 0.5) * marHistBinSize;
+        const clamped = clamp(
+          rawThreshold,
+          CONFIG.marThresholdClampMin,
+          CONFIG.marThresholdClampMax
+        );
+        marThreshold = marThreshold + CONFIG.marThresholdEmaAlpha * (clamped - marThreshold);
+        marThresholdValueEl.textContent = marThreshold.toFixed(3);
+      }
+
+      function findTopBinsGeneric(data) {
+        let first = { idx: -1, count: 0 };
+        let second = { idx: -1, count: 0 };
+        data.forEach((count, idx) => {
+          if (count > first.count) {
+            second = first;
+            first = { idx, count };
+          } else if (count > second.count) {
+            second = { idx, count };
+          }
+        });
+        if (first.idx === -1) return null;
+        return [first, second];
+      }
+
+      function updatePitchHistogram(value, timestamp) {
+        if (!Number.isFinite(value)) return;
+        if (value < CONFIG.pitchHistRangeMin || value > CONFIG.pitchHistRangeMax) return;
+        const idx = Math.min(
+          CONFIG.pitchHistBins - 1,
+          Math.max(0, Math.floor((value - CONFIG.pitchHistRangeMin) / pitchHistBinSize))
+        );
+        pitchHistogram[idx] += 1;
+        pitchBuffer.push({ time: timestamp, bin: idx });
+        const cutoff = timestamp - CONFIG.pitchHistWindowMs;
+        while (pitchBuffer.length && pitchBuffer[0].time < cutoff) {
+          const expired = pitchBuffer.shift();
+          pitchHistogram[expired.bin] = Math.max(0, pitchHistogram[expired.bin] - 1);
+        }
+      }
+
+      function updatePitchThreshold() {
+        const topBins = findTopBinsGeneric(pitchHistogram);
+        if (!topBins) return;
+        const [first, second] = topBins;
+        if (second.count === 0) return;
+        const start = Math.min(first.idx, second.idx);
+        const end = Math.max(first.idx, second.idx);
+        let valleyIdx = start;
+        let valleyCount = Infinity;
+        for (let i = start; i <= end; i++) {
+          if (pitchHistogram[i] < valleyCount) {
+            valleyCount = pitchHistogram[i];
+            valleyIdx = i;
+          }
+        }
+        const rawThreshold =
+          CONFIG.pitchHistRangeMin + (valleyIdx + 0.5) * pitchHistBinSize;
+        const clamped = clamp(
+          rawThreshold,
+          CONFIG.pitchThresholdClampMin,
+          CONFIG.pitchThresholdClampMax
+        );
+        pitchThreshold = pitchThreshold + CONFIG.pitchThresholdEmaAlpha * (clamped - pitchThreshold);
+        pitchThresholdValueEl.textContent = pitchThreshold.toFixed(1) + '°';
+      }
+
+      function classifyClosedWithDebounce(value, timestamp) {
+        const candidate = value < threshold;
+        if (candidate !== pendingState) {
+          pendingState = candidate;
+          pendingSince = timestamp;
+        }
+        if (candidate !== debouncedState && timestamp - pendingSince >= CONFIG.debounceMs) {
+          debouncedState = candidate;
+          stateTimeline.push({ time: timestamp, state: debouncedState });
+          pruneTimelineData(stateTimeline, timestamp - (CONFIG.perclosWindowMs + 2000));
+        }
+        return debouncedState;
+      }
+
+      function recordPitchValue(value, timestamp) {
+        if (!Number.isFinite(value)) return;
+        pitchValueTimeline.push({ time: timestamp, value });
+        prunePitchTimeline(timestamp - (CONFIG.perclosWindowMs + 2000));
+      }
+
+      function prunePitchTimeline(cutoff) {
+        while (pitchValueTimeline.length > 1 && pitchValueTimeline[1].time < cutoff) {
+          pitchValueTimeline.shift();
+        }
+      }
+
+      function classifyDroopWithDebounce(value, timestamp) {
+        if (!Number.isFinite(value)) return droopState;
+        const candidate = value >= pitchThreshold;
+        if (candidate !== droopPendingState) {
+          droopPendingState = candidate;
+          droopPendingSince = timestamp;
+        }
+        if (candidate !== droopState && timestamp - droopPendingSince >= CONFIG.droopDebounceMs) {
+          droopState = candidate;
+          droopTimeline.push({ time: timestamp, state: droopState });
+          pruneTimelineData(droopTimeline, timestamp - (CONFIG.perclosWindowMs + 2000));
+        }
+        return droopState;
+      }
+
+      function detectYawnEvents(marValue, timestamp, isHighConfidence) {
+        const hasSample = Number.isFinite(marValue);
+        const canStart = hasSample && isHighConfidence;
+        const canEnd = hasSample || !isHighConfidence;
+        const above = hasSample && marValue > marThreshold;
+        if (!yawnActive) {
+          if (canStart && above && timestamp - lastYawnEndTime >= CONFIG.yawnRefractoryMs) {
+            if (!yawnCandidateStart) yawnCandidateStart = timestamp;
+            if (timestamp - yawnCandidateStart >= CONFIG.yawnStartHoldMs) {
+              yawnActive = true;
+              yawnStartTime = yawnCandidateStart;
+              yawnCurrentPeak = marValue;
+              yawnStateTimeline.push({ time: yawnStartTime, state: true });
+              pruneTimelineData(yawnStateTimeline, timestamp - (CONFIG.perclosWindowMs + 2000));
+            }
+          } else if (!above) {
+            yawnCandidateStart = null;
+          }
+        } else {
+          if (above) {
+            yawnEndCandidateStart = null;
+            yawnCurrentPeak = Math.max(yawnCurrentPeak, marValue);
+          } else if (canEnd) {
+            if (!yawnEndCandidateStart) yawnEndCandidateStart = timestamp;
+            if (timestamp - yawnEndCandidateStart >= CONFIG.yawnEndHoldMs) {
+              yawnActive = false;
+              const endTime = timestamp;
+              yawnEvents.push({ start: yawnStartTime, end: endTime, peak: yawnCurrentPeak });
+              yawnStateTimeline.push({ time: endTime, state: false });
+              pruneTimelineData(yawnStateTimeline, timestamp - (CONFIG.perclosWindowMs + 2000));
+              pruneYawnEvents(timestamp - (CONFIG.perclosWindowMs + 2000));
+              lastYawnEndTime = endTime;
+              yawnCandidateStart = null;
+              yawnEndCandidateStart = null;
+              yawnCurrentPeak = 0;
+            }
+          }
+        }
+      }
+
+      function pruneTimelineData(timeline, cutoff) {
+        while (timeline.length > 1 && timeline[1].time < cutoff) {
+          timeline.shift();
+        }
+      }
+
+      function pruneYawnEvents(cutoff) {
+        while (yawnEvents.length && yawnEvents[0].end < cutoff) {
+          yawnEvents.shift();
+        }
+      }
+
+      function detectNods(pitchDownValue, timestamp, poseStable) {
+        if (!poseStable || !Number.isFinite(pitchDownValue)) {
+          nodActive = false;
+          nodCandidate = null;
+          return;
+        }
+        if (!nodActive) {
+          const sinceLast = timestamp - lastNodTime;
+          if (
+            pitchDownValue > pitchThreshold + CONFIG.nodPeakMarginDeg &&
+            sinceLast >= CONFIG.nodRefractoryMs &&
+            sinceLast >= CONFIG.nodMinPeriodMs
+          ) {
+            nodActive = true;
+            nodCandidate = { start: timestamp, peak: pitchDownValue };
+          }
+        } else {
+          nodCandidate.peak = Math.max(nodCandidate.peak, pitchDownValue);
+          if (pitchDownValue < pitchThreshold) {
+            const duration = timestamp - nodCandidate.start;
+            const amplitude = nodCandidate.peak - pitchThreshold;
+            if (
+              duration >= CONFIG.nodMinDurationMs &&
+              duration <= CONFIG.nodMaxDurationMs &&
+              amplitude >= CONFIG.nodMinAmplitudeDeg
+            ) {
+              nodEvents.push({ time: timestamp, peak: nodCandidate.peak });
+              lastNodTime = timestamp;
+              pruneNodEvents(timestamp - (CONFIG.perclosWindowMs + 2000));
+            }
+            nodActive = false;
+            nodCandidate = null;
+          }
+        }
+      }
+
+      function pruneNodEvents(cutoff) {
+        while (nodEvents.length && nodEvents[0].time < cutoff) {
+          nodEvents.shift();
+        }
+      }
+
+      function computePerclosWindow(windowMs) {
+        const now = performance.now();
+        const stats = integrateTimeline(stateTimeline, windowMs, now);
+        return stats.fraction;
+      }
+
+      function computeYawnWindow30s(windowMs) {
+        const now = performance.now();
+        pruneYawnEvents(now - windowMs - 2000);
+        const stats = integrateTimeline(yawnStateTimeline, windowMs, now);
+        const cutoff = now - windowMs;
+        let count = 0;
+        let peak = 0;
+        yawnEvents.forEach((evt) => {
+          if (evt.end >= cutoff) {
+            count += 1;
+            peak = Math.max(peak, evt.peak || 0);
+          }
+        });
+        if (yawnActive) {
+          peak = Math.max(peak, yawnCurrentPeak || 0);
+        }
+        return {
+          count,
+          timeSeconds: stats.activeMs / 1000,
+          duty: stats.fraction,
+          peak
+        };
+      }
+
+      function computeHeadPoseWindow30s(windowMs) {
+        const now = performance.now();
+        const cutoff = now - windowMs;
+        prunePitchTimeline(now - windowMs - 2000);
+        pruneNodEvents(now - windowMs - 2000);
+        const droopStats = integrateTimeline(droopTimeline, windowMs, now);
+        const pitchStats = integrateValueTimeline(pitchValueTimeline, windowMs, now);
+        const nodCount = nodEvents.filter((evt) => evt.time >= cutoff).length;
+        const nodRate = (nodCount / windowMs) * 60000;
+        return {
+          avgPitchDown: pitchStats.mean,
+          maxPitchDown: pitchStats.max,
+          droopTime: droopStats.activeMs / 1000,
+          droopDuty: droopStats.fraction,
+          nodCount,
+          nodRate: Number.isFinite(nodRate) ? nodRate : 0
+        };
+      }
+
+      function integrateTimeline(timeline, windowMs, now) {
+        const cutoff = now - windowMs;
+        if (!timeline.length) return { fraction: 0, activeMs: 0 };
+        let i = 0;
+        while (i < timeline.length && timeline[i].time <= cutoff) {
+          i++;
+        }
+        let prevState = i === 0 ? timeline[0].state : timeline[i - 1].state;
+        let prevTime = cutoff;
+        let activeMs = 0;
+        for (; i < timeline.length; i++) {
+          const entry = timeline[i];
+          const dt = entry.time - prevTime;
+          if (prevState) activeMs += dt;
+          prevState = entry.state;
+          prevTime = entry.time;
+        }
+        if (prevState) {
+          activeMs += now - prevTime;
+        }
+        const clampedMs = Math.min(windowMs, activeMs);
+        return { fraction: clampedMs / windowMs, activeMs: clampedMs };
+      }
+
+      function integrateValueTimeline(timeline, windowMs, now) {
+        const cutoff = now - windowMs;
+        if (!timeline.length) return { mean: 0, max: 0 };
+        let i = 0;
+        while (i < timeline.length && timeline[i].time <= cutoff) {
+          i++;
+        }
+        let prevValue = i === 0 ? timeline[0].value : timeline[i - 1].value;
+        let prevTime = cutoff;
+        let area = 0;
+        let maxVal = prevValue;
+        for (; i < timeline.length; i++) {
+          const entry = timeline[i];
+          const dt = entry.time - prevTime;
+          area += prevValue * dt;
+          maxVal = Math.max(maxVal, prevValue);
+          prevValue = entry.value;
+          prevTime = entry.time;
+        }
+        const dtTail = now - prevTime;
+        area += prevValue * dtTail;
+        maxVal = Math.max(maxVal, prevValue);
+        const mean = windowMs ? area / windowMs : 0;
+        return { mean: Math.max(0, mean), max: Math.max(0, maxVal) };
+      }
+
+      function updateFps(now) {
+        if (lastFrameTime) {
+          const instFps = 1000 / (now - lastFrameTime);
+          fpsEma = fpsEma ? fpsEma + CONFIG.fpsEmaAlpha * (instFps - fpsEma) : instFps;
+          fpsValueEl.textContent = fpsEma.toFixed(1);
+        }
+        lastFrameTime = now;
+      }
+
+      function renderDebugHistograms() {
+        renderHistogramCanvas(
+          histogramCtx,
+          histogramCanvas,
+          histogram,
+          CONFIG.histBins,
+          CONFIG.histRangeMin,
+          CONFIG.histRangeMax,
+          threshold,
+          '#4f9dff',
+          '#ff7043'
+        );
+        renderHistogramCanvas(
+          marHistogramCtx,
+          marHistogramCanvas,
+          marHistogram,
+          CONFIG.marHistBins,
+          CONFIG.marHistRangeMin,
+          CONFIG.marHistRangeMax,
+          marThreshold,
+          '#ffb347',
+          '#40ffd4'
+        );
+        renderHistogramCanvas(
+          pitchHistogramCtx,
+          pitchHistogramCanvas,
+          pitchHistogram,
+          CONFIG.pitchHistBins,
+          CONFIG.pitchHistRangeMin,
+          CONFIG.pitchHistRangeMax,
+          pitchThreshold,
+          '#7c8cff',
+          '#ff4f81'
+        );
+      }
+
+      function renderHistogramCanvas(
+        ctx,
+        canvas,
+        data,
+        binCount,
+        rangeMin,
+        rangeMax,
+        thresholdValue,
+        barColor,
+        lineColor
+      ) {
+        const { width, height } = canvas;
+        ctx.clearRect(0, 0, width, height);
+        const maxCount = Math.max(...data, 1);
+        const barWidth = width / binCount;
+        ctx.fillStyle = barColor;
+        for (let i = 0; i < binCount; i++) {
+          const count = data[i] || 0;
+          const barHeight = (count / maxCount) * (height - 10);
+          ctx.fillRect(i * barWidth + 1, height - barHeight, barWidth - 2, barHeight);
+        }
+        const normalized = (thresholdValue - rangeMin) / (rangeMax - rangeMin);
+        const x = clamp(normalized, 0, 1) * width;
+        ctx.strokeStyle = lineColor;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+
+      function clamp(val, min, max) {
+        return Math.min(max, Math.max(min, val));
+      }
+
+      function normalize(vec) {
+        const n = Math.hypot(vec[0], vec[1], vec[2]);
+        if (!n) return [0, 0, 0];
+        return vec.map((v) => v / n);
+      }
+
+      function cross(a, b) {
+        return [
+          a[1] * b[2] - a[2] * b[1],
+          a[2] * b[0] - a[0] * b[2],
+          a[0] * b[1] - a[1] * b[0]
+        ];
+      }
+
+      function rotationMatrixToEuler(R) {
+        const sy = Math.sqrt(R[0][0] * R[0][0] + R[1][0] * R[1][0]);
+        let yaw, pitch, roll;
+        const singular = sy < 1e-6;
+        if (!singular) {
+          yaw = Math.atan2(R[2][1], R[2][2]);
+          pitch = Math.atan2(-R[2][0], sy);
+          roll = Math.atan2(R[1][0], R[0][0]);
+        } else {
+          yaw = Math.atan2(-R[1][2], R[1][1]);
+          pitch = Math.atan2(-R[2][0], sy);
+          roll = 0;
+        }
+        return {
+          yaw: (yaw * 180) / Math.PI,
+          pitch: (pitch * 180) / Math.PI,
+          roll: (roll * 180) / Math.PI
+        };
+      }
+
+      function startStopwatch() {
+        if (sessionStartTime === null) {
+          sessionStartTime = performance.now();
+        }
+        if (stopwatchTimer) return;
+        stopwatchTimer = setInterval(updateStopwatch, CONFIG.stopwatchIntervalMs);
+        updateStopwatch();
+      }
+
+      function updateStopwatch() {
+        if (sessionStartTime === null) return;
+        const elapsed = performance.now() - sessionStartTime;
+        stopwatchValueEl.textContent = formatDuration(elapsed);
+      }
+
+      function formatDuration(ms) {
+        const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const mm = minutes.toString().padStart(2, '0');
+        const ss = seconds.toString().padStart(2, '0');
+        if (hours > 0) {
+          return `${hours.toString().padStart(2, '0')}:${mm}:${ss}`;
+        }
+        return `${mm}:${ss}`;
+      }
+
+      function formatWindowLabel(label, windowMs) {
+        if (sessionStartTime === null) return `${label} window: --`;
+        const now = performance.now();
+        const startOffset = Math.max(0, now - windowMs - sessionStartTime);
+        const endOffset = Math.max(0, now - sessionStartTime);
+        return `${label} window: ${formatDuration(startOffset)} – ${formatDuration(endOffset)}`;
+      }
+
+      // Expose for console debugging if needed
+      window.computePerclosWindow = computePerclosWindow;
+      window.computeYawnWindow30s = computeYawnWindow30s;
+      window.computeHeadPoseWindow30s = computeHeadPoseWindow30s;
+    })();
+  </script>
+</body>
+</html>
