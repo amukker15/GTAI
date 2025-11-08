@@ -161,70 +161,124 @@ def main() -> None:
                 except Exception as e:
                     print(f"Could not query {name}: {e}")
 
-            # Print DRIVERS column names and types
+            # --- api_tester-style upload: POST a local footage file to /api/window ---
+            # After receiving the JSON payload back from the API, prompt for a
+            # driver_id and insert a drowsiness measurement row into
+            # DROWSINESS_MEASUREMENTS using selected fields from the JSON.
             try:
-                col_q = (
-                    "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT "
-                    "FROM INFORMATION_SCHEMA.COLUMNS "
-                    "WHERE TABLE_CATALOG = %s AND TABLE_SCHEMA = %s AND TABLE_NAME = 'DRIVERS' "
-                    "ORDER BY ORDINAL_POSITION"
-                )
-                cur.execute(col_q, (database, schema))
-                cols = cur.fetchall()
-                if not cols:
-                    print("No columns found for DRIVERS (check database/schema/table name)")
+                import requests
+            except Exception:
+                print("\nrequests library not installed; skipping API tester upload. Install with: pip install requests")
+            else:
+                from pathlib import Path
+                import json
+
+                # locate footage directory relative to this script
+                script_dir = Path(__file__).parent
+                footage_dir = script_dir.parent / "footage"
+                video_file = None
+                if footage_dir.exists():
+                    for ext in ("*.mp4", "*.mov", "*.avi", "*.mkv", "*.mpg", "*.webm"):
+                        matches = list(footage_dir.glob(ext))
+                        if matches:
+                            video_file = matches[0]
+                            break
+
+                if not video_file:
+                    print("\nNo video file found in footage/; skipping API tester upload.")
                 else:
-                    print("DRIVERS columns:")
-                    for cn, dt, nullable, coldef in cols:
-                        print(f"  {cn} : {dt} (nullable={nullable}, default={coldef})")
-
-                    # Build an INSERT using discovered columns and simple default values
-                    insert_cols = []
-                    insert_vals = []
-                    for cn, dt, nullable, coldef in cols:
-                        # Skip columns that have a default expression (likely identity/auto)
-                        if coldef and str(coldef).strip() != "":
-                            continue
-                        # Choose a value based on data type
-                        t = str(dt).upper()
-                        if "CHAR" in t or "TEXT" in t or "VARCHAR" in t or "STRING" in t:
-                            # use a short test string; prefer driver_id if present
-                            if cn.lower() in ("driver_id", "id", "driverid"):
-                                val = "test_driver"
-                            else:
-                                val = f"test_{cn.lower()}"
-                        elif "TIMESTAMP" in t or "DATETIME" in t or "TIME" in t:
-                            val = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                        elif "DATE" in t:
-                            val = date.today().isoformat()
-                        elif "INT" in t or "NUMBER" in t or "DECIMAL" in t or "NUMERIC" in t or "FLOAT" in t:
-                            val = 0
-                        elif "BOOL" in t:
-                            val = False
-                        else:
-                            # Fallback to NULL for complex types like VARIANT/OBJECT
-                            val = None
-
-                        insert_cols.append(cn)
-                        insert_vals.append(val)
-
-                    if insert_cols:
-                        placeholders = ",".join(["%s"] * len(insert_cols))
-                        cols_join = ",".join(insert_cols)
-                        insert_sql = f"INSERT INTO {database}.{schema}.DRIVERS ({cols_join}) VALUES ({placeholders})"
+                    base_url = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip('/')
+                    upload_url = f"{base_url}/api/window"
+                    print(f"\nUploading {video_file.name} to {upload_url} with timestamp=35")
+                    try:
+                        with open(video_file, 'rb') as fh:
+                            files = {'video': (video_file.name, fh, 'application/octet-stream')}
+                            data = {'timestamp': '35', 'session_id': 'api_tester_local', 'driver_id': 'test_driver'}
+                            resp = requests.post(upload_url, files=files, data=data, timeout=120)
                         try:
-                            cur.execute(insert_sql, insert_vals)
-                            print(f"Inserted into DRIVERS, rowcount={cur.rowcount}")
-                            # show new count
-                            cur.execute(drivers_q)
-                            newc = cur.fetchone()[0]
-                            print(f"DRIVERS rows after insert: {newc}")
-                        except Exception as ie:
-                            print(f"Failed to insert into DRIVERS: {ie}")
-                    else:
-                        print("No writable columns detected for DRIVERS (all have defaults). Skipping insert.")
-            except Exception as e:
-                print(f"Could not introspect DRIVERS columns: {e}")
+                            resp.raise_for_status()
+                        except Exception as re:
+                            print(f"Upload failed: {re} (status {resp.status_code})")
+                            try:
+                                print(resp.text)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                payload = resp.json()
+                                print("API /api/window response JSON:")
+                                print(json.dumps(payload, indent=2))
+                            except Exception:
+                                print("Upload succeeded but response was not JSON:")
+                                print(resp.text)
+                                payload = None
+
+                            # If we have a JSON payload, prompt for driver_id and insert
+                            # a row into DROWSINESS_MEASUREMENTS using selected fields.
+                            if payload:
+                                # Ask the user which driver this belongs to
+                                try:
+                                    driver_id = input("Enter driver_id to associate with this measurement: ").strip()
+                                except Exception:
+                                    driver_id = ''
+
+                                if not driver_id:
+                                    print("No driver_id provided; skipping DB insert.")
+                                else:
+                                    # Prepare measurement values from the payload. Use None
+                                    # for missing keys so Snowflake will store NULL.
+                                    def _float_or_none(x):
+                                        try:
+                                            return None if x is None else float(x)
+                                        except Exception:
+                                            return None
+
+                                    def _int_or_none(x):
+                                        try:
+                                            return None if x is None else int(x)
+                                        except Exception:
+                                            return None
+
+                                    fields = [
+                                        'perclos_30s',
+                                        'pitchdown_avg_30s',
+                                        'pitchdown_max_30s',
+                                        'droop_time_30s',
+                                        'droop_duty_30s',
+                                        'yawn_count_30s',
+                                        'yawn_time_30s',
+                                        'yawn_duty_30s',
+                                        'yawn_peak_30s',
+                                    ]
+
+                                    values = []
+                                    for f in fields:
+                                        v = payload.get(f)
+                                        if f == 'yawn_count_30s':
+                                            values.append(_int_or_none(v))
+                                        else:
+                                            values.append(_float_or_none(v))
+
+                                    # Add driver_id and current timestamp at the front
+                                    measured_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+                                    insert_cols = ['driver_id', 'timestamp'] + fields
+                                    insert_vals = [driver_id, measured_at] + values
+
+                                    placeholders = ",".join(["%s"] * len(insert_cols))
+                                    cols_join = ",".join(insert_cols)
+                                    insert_sql = f"INSERT INTO {database}.{schema}.DROWSINESS_MEASUREMENTS ({cols_join}) VALUES ({placeholders})"
+                                    try:
+                                        cur.execute(insert_sql, insert_vals)
+                                        print(f"Inserted measurement into DROWSINESS_MEASUREMENTS, rowcount={cur.rowcount}")
+                                        # show new count
+                                        cur.execute(meas_q)
+                                        newc = cur.fetchone()[0]
+                                        print(f"DROWSINESS_MEASUREMENTS rows after insert: {newc}")
+                                    except Exception as ie:
+                                        print(f"Failed to insert measurement: {ie}")
+                    except Exception as e:
+                        print(f"Error uploading file to API tester: {e}")
         finally:
             cur.close()
     finally:
@@ -233,53 +287,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-    # --- api_tester-style upload: POST a local footage file to /api/window ---
-    try:
-        import requests
-    except Exception:
-        print("\nrequests library not installed; skipping API tester upload. Install with: pip install requests")
-    else:
-        from pathlib import Path
-        import json
-
-        # locate footage directory relative to this script
-        script_dir = Path(__file__).parent
-        footage_dir = script_dir.parent / "footage"
-        video_file = None
-        if footage_dir.exists():
-            for ext in ("*.mp4", "*.mov", "*.avi", "*.mkv", "*.mpg", "*.webm"):
-                matches = list(footage_dir.glob(ext))
-                if matches:
-                    video_file = matches[0]
-                    break
-
-        if not video_file:
-            print("\nNo video file found in footage/; skipping API tester upload.")
-        else:
-            base_url = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip('/')
-            upload_url = f"{base_url}/api/window"
-            print(f"\nUploading {video_file.name} to {upload_url} with timestamp=35")
-            try:
-                with open(video_file, 'rb') as fh:
-                    files = {'video': (video_file.name, fh, 'application/octet-stream')}
-                    data = {'timestamp': '35', 'session_id': 'api_tester_local', 'driver_id': 'test_driver'}
-                    resp = requests.post(upload_url, files=files, data=data, timeout=120)
-                try:
-                    resp.raise_for_status()
-                except Exception as re:
-                    print(f"Upload failed: {re} (status {resp.status_code})")
-                    try:
-                        print(resp.text)
-                    except Exception:
-                        pass
-                else:
-                    try:
-                        payload = resp.json()
-                        print("API /api/window response JSON:")
-                        print(json.dumps(payload, indent=2))
-                    except Exception:
-                        print("Upload succeeded but response was not JSON:")
-                        print(resp.text)
-            except Exception as e:
-                print(f"Error uploading file to API tester: {e}")
+    
