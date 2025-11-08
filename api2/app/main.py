@@ -6,6 +6,8 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from starlette.concurrency import run_in_threadpool
 
 from .analyzer import WindowAnalyzer
@@ -33,6 +35,12 @@ app = FastAPI(
     description="Upload a recording plus a timestamp; receive 30s vigilance analytics.",
     version="0.1.0",
 )
+
+# Serve developer footage files from the repo's footage/ directory at /footage
+# This makes files placed in api2/footage accessible to the frontend/dev proxy.
+footage_dir = Path(__file__).resolve().parents[1] / "footage"
+if footage_dir.exists():
+    app.mount("/footage", StaticFiles(directory=str(footage_dir)), name="footage")
 
 app.add_middleware(
     CORSMiddleware,
