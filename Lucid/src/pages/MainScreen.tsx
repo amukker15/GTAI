@@ -1,10 +1,128 @@
-import { MapContainer, TileLayer, CircleMarker, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip } from "react-leaflet";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../state/store";
 import { useMemo } from "react";
 import { computeStatus, statusToColor } from "../lib/status";
 import { useDarkMode } from "../context/DarkModeContext";
 import { AlertCircle, AlertTriangle, CheckCircle } from "../components/icons";
+
+type CityMarker = { name: string; coords: [number, number] };
+
+const CITY_MARKERS: CityMarker[] = [
+  { name: "Savannah, GA", coords: [32.0809, -81.0912] },
+  { name: "Atlanta, GA", coords: [33.749, -84.388] },
+  { name: "New York City, NY", coords: [40.7128, -74.006] },
+  { name: "Dallas, TX", coords: [32.7767, -96.797] },
+  { name: "Los Angeles, CA", coords: [34.0522, -118.2437] },
+  { name: "Seattle, WA", coords: [47.6062, -122.3321] },
+  { name: "Salt Lake City, UT", coords: [40.7608, -111.891] },
+  { name: "Chicago, IL", coords: [41.8781, -87.6298] },
+];
+
+const MAJOR_ROUTES: [number, number][][] = [
+  [
+    [32.0809, -81.0912],
+    [32.2833, -81.2354],
+    [32.6570, -81.7504],
+    [32.8890, -82.4108],
+    [32.8407, -83.6324],
+    [33.1754, -83.9389],
+    [33.4471, -84.1469],
+    [33.7490, -84.3880],
+  ],
+  [
+    [32.0809, -81.0912],
+    [32.7765, -79.9311],
+    [34.0007, -81.0348],
+    [35.2271, -80.8431],
+    [36.0726, -79.7920],
+    [38.9072, -77.0369],
+    [39.9526, -75.1652],
+    [40.7128, -74.0060],
+  ],
+  [
+    [33.7490, -84.3880],
+    [35.0456, -85.3097],
+    [36.1627, -86.7816],
+    [38.2527, -85.7585],
+    [39.7684, -86.1581],
+    [41.8781, -87.6298],
+  ],
+  [
+    [33.7490, -84.3880],
+    [33.5207, -86.8025],
+    [32.2988, -90.1848],
+    [32.5252, -93.7502],
+    [32.7767, -96.7970],
+  ],
+  [
+    [32.7767, -96.7970],
+    [34.0526, -97.1303],
+    [34.7304, -96.6783],
+    [35.2220, -97.4395],
+    [36.1539, -95.9928],
+    [37.0902, -94.5120],
+    [38.6270, -90.1994],
+    [39.7817, -89.6501],
+    [41.8781, -87.6298],
+  ],
+  [
+    [32.7767, -96.7970],
+    [32.4487, -99.7331],
+    [31.9973, -102.0779],
+    [31.7619, -106.4850],
+    [32.2226, -110.9747],
+    [33.4484, -112.0740],
+    [33.9533, -117.3960],
+    [34.0522, -118.2437],
+  ],
+  [
+    [40.7128, -74.0060],
+    [40.4397, -79.9959],
+    [41.4810, -81.7982],
+    [41.5048, -87.7582],
+    [41.8781, -87.6298],
+  ],
+  [
+    [41.8781, -87.6298],
+    [41.2590, -95.9378],
+    [41.1400, -104.8202],
+    [40.7608, -111.8910],
+  ],
+  [
+    [32.7767, -96.7970],
+    [35.2210, -101.8313],
+    [35.0844, -106.6504],
+    [38.5733, -109.5498],
+    [40.7608, -111.8910],
+  ],
+  [
+    [40.7608, -111.8910],
+    [40.2338, -111.6585],
+    [37.0965, -113.5684],
+    [36.1699, -115.1398],
+    [34.8958, -117.0173],
+    [34.0522, -118.2437],
+  ],
+  [
+    [34.0522, -118.2437],
+    [35.3733, -119.0187],
+    [36.7378, -119.7871],
+    [38.5816, -121.4944],
+    [40.5865, -122.3917],
+    [42.3265, -122.8756],
+    [45.5152, -122.6784],
+    [47.6062, -122.3321],
+  ],
+  [
+    [40.7608, -111.8910],
+    [41.2230, -111.9738],
+    [43.6150, -116.2023],
+    [45.6721, -118.7886],
+    [47.6588, -117.4260],
+    [47.6062, -122.3321],
+  ],
+];
 
 export default function MainScreen() {
   const navigate = useNavigate();
@@ -13,6 +131,7 @@ export default function MainScreen() {
   const alerts = useStore((s) => s.alerts);
   const thresholds = useStore((s) => s.thresholds);
   const { darkMode } = useDarkMode();
+  const cityColor = "#dc2626";
 
   const totals = useMemo(() => {
     const totalTrucks = trucks.length;
@@ -63,16 +182,47 @@ export default function MainScreen() {
         <MapContainer
           center={[39.5, -98.35]}
           zoom={4}
+          minZoom={4}
           className="h-full w-full"
           scrollWheelZoom={true}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url={darkMode 
-              ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            }
-          />
+          url={darkMode 
+            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          }
+        />
+          {CITY_MARKERS.map((city) => (
+            <CircleMarker
+              key={city.name}
+              center={city.coords}
+              radius={4}
+              pathOptions={{
+                color: cityColor,
+                fillColor: cityColor,
+                fillOpacity: 0.9,
+                weight: 2,
+              }}
+              interactive={false}
+            >
+              <Tooltip permanent direction="right" offset={[6, 0]} className="city-label">
+                <span>{city.name}</span>
+              </Tooltip>
+            </CircleMarker>
+          ))}
+          {MAJOR_ROUTES.map((route, idx) => (
+            <Polyline
+              key={`route-${idx}`}
+              positions={route}
+              pathOptions={{
+                color: "#dc2626",
+                weight: 3.5,
+                opacity: 0.8,
+                lineCap: "round",
+              }}
+            />
+          ))}
           {trucks.map((t) => {
             const latest = telemetryByTruckId[t.id]?.slice(-1)[0];
             if (!latest) return null;

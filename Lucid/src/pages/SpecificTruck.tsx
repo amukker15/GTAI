@@ -265,33 +265,35 @@ export default function TruckDetail() {
           </div>
         </div>
 
-        <div className={`${cardClass} xl:col-span-2 min-h-[320px]`}>
+        <div className={`${cardClass} xl:col-span-2 h-[360px]`}>
           <div className={cardHeaderClass}>
             <span className="font-semibold">Alert History</span>
             <span className="text-sm text-gray-500 dark:text-gray-400">{truckAlerts.length} events</span>
           </div>
-          <div className={`${cardBodyClass} space-y-3 overflow-auto`}>
-            {truckAlerts.length === 0 && (
-              <div className="text-gray-500 dark:text-gray-400">No alerts for this truck.</div>
-            )}
-            {truckAlerts.map((a) => (
-              <div
-                key={a.id}
-                className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col gap-1"
-                style={{ borderLeftWidth: 4, borderLeftColor: statusToColor(a.status) }}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">{a.status}</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date(a.startedAt).toLocaleTimeString()}
-                  </span>
+          <div className={`${cardBodyClass} overflow-y-auto`}>
+            <div className="space-y-3 pr-1">
+              {truckAlerts.length === 0 && (
+                <div className="text-gray-500 dark:text-gray-400">No alerts for this truck.</div>
+              )}
+              {truckAlerts.map((a) => (
+                <div
+                  key={a.id}
+                  className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col gap-1"
+                  style={{ borderLeftWidth: 4, borderLeftColor: statusToColor(a.status) }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">{a.status}</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {new Date(a.startedAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-300">{a.reason}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Drowsy for {a.secondsDrowsy}s
+                  </div>
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-300">{a.reason}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Drowsy for {a.secondsDrowsy}s
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
