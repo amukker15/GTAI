@@ -217,7 +217,7 @@ export default function AppHeader() {
             <img 
               src="/media/logo.png" 
               alt="Lucid" 
-              className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(37,99,235))_drop-shadow(-1px_0_0_rgb(37,99,235))_drop-shadow(0_1px_0_rgb(37,99,235))_drop-shadow(0_-1px_0_rgb(37,99,235))_drop-shadow(1px_1px_0_rgb(37,99,235))_drop-shadow(-1px_-1px_0_rgb(37,99,235))_drop-shadow(1px_-1px_0_rgb(37,99,235))_drop-shadow(-1px_1px_0_rgb(37,99,235))] dark:[filter:drop-shadow(1px_0_0_rgb(96,165,250))_drop-shadow(-1px_0_0_rgb(96,165,250))_drop-shadow(0_1px_0_rgb(96,165,250))_drop-shadow(0_-1px_0_rgb(96,165,250))_drop-shadow(1px_1px_0_rgb(96,165,250))_drop-shadow(-1px_-1px_0_rgb(96,165,250))_drop-shadow(1px_-1px_0_rgb(96,165,250))_drop-shadow(-1px_1px_0_rgb(96,165,250))]"
+              className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(40,40,40))_drop-shadow(-1px_0_0_rgb(51,51,51))_drop-shadow(0_1px_0_rgb(51,51,51))_drop-shadow(0_-1px_0_rgb(51,51,51))_drop-shadow(1px_1px_0_rgb(51,51,51))_drop-shadow(-1px_-1px_0_rgb(51,51,51))_drop-shadow(1px_-1px_0_rgb(51,51,51))_drop-shadow(-1px_1px_0_rgb(51,51,51))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
             />
           </div>
 
