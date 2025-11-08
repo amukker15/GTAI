@@ -52,3 +52,11 @@ export const Moon = (props: IconProps) => (
     <path d="M21 12.79A9 9 0 0 1 11.21 3 7 7 0 1 0 21 12.79z" />
   </svg>
 );
+
+export const Home = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M3 11 12 3l9 8" />
+    <path d="M5 12v8h14v-8" />
+    <path d="M9 21V9h6v12" />
+  </svg>
+);

@@ -2,7 +2,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useStore } from "../state/store";
-import type { LatLngTuple } from "leaflet";
+import type { LatLngTuple, LatLngBoundsExpression } from "leaflet";
 import { MapContainer, TileLayer, Polyline } from "react-leaflet";
 import {
   LineChart,
@@ -16,7 +16,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { computeStatus, statusToColor } from "../lib/status";
+import type { DriverStatus } from "../lib/status";
 import type { Telemetry, Thresholds } from "../lib/types";
+import { useDarkMode } from "../context/DarkModeContext";
+import { Home } from "../components/icons";
 
 type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
 
@@ -35,6 +38,7 @@ export default function TruckDetail() {
   const thresholds = useStore((s) => s.thresholds) as Thresholds | null;
   const selectedVar = useStore((s) => s.selectedVar);
   const setSelectedVar = useStore((s) => s.setSelectedVar);
+  const { darkMode } = useDarkMode();
 
   // Local UI state
   const [showThresholds, setShowThresholds] = useState(false);
@@ -46,6 +50,16 @@ export default function TruckDetail() {
 
   // Fallback center if no data yet (US center)
   const center: LatLngTuple = latest ? [latest.lat, latest.lng] : [39.5, -98.35];
+  const focusBounds = useMemo<LatLngBoundsExpression | undefined>(() => {
+    if (!latest) return undefined;
+    const latPad = 2;
+    const lngPad = 3;
+    return [
+      [latest.lat - latPad, latest.lng - lngPad],
+      [latest.lat + latPad, latest.lng + lngPad],
+    ] as LatLngBoundsExpression;
+  }, [latest]);
+  const mapKey = latest ? `${truckId}-${latest.timestamp}` : "no-data";
 
   // Build chart data
   const chartData = useMemo(
@@ -89,10 +103,19 @@ export default function TruckDetail() {
   );
 
   // Status text
-  const statusText = useMemo(() => {
+  const statusText = useMemo<DriverStatus>(() => {
     if (!thresholds) return "OK";
     return computeStatus(latest, history, thresholds);
   }, [latest, history, thresholds]);
+  const statusColor = statusToColor(statusText);
+  const mapTileUrl = darkMode
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  const cardClass =
+    "rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur flex flex-col";
+  const cardHeaderClass =
+    "flex items-center justify-between px-5 py-4 border-b border-gray-100/60 dark:border-gray-800";
+  const cardBodyClass = "flex-1 px-5 py-4";
 
   // Handlers
   const onSaveThresholds = async () => {
@@ -102,53 +125,91 @@ export default function TruckDetail() {
   };
 
   return (
-    <div className="page">
-      {/* Top bar */}
-      <div className="mb-4 flex items-center justify-between">
-        <Link to="/" className="text-blue-600 underline">🏠 Home</Link>
-        <div className="text-sm text-gray-600">Truck: {truckId}</div>
+    <div className="page pt-28 pb-10 space-y-6">
+      <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur px-6 py-5 flex flex-wrap items-center gap-5 justify-between">
+        <Link
+          to="/"
+          className="flex items-center gap-3 text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-200 transition-colors"
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/40">
+            <Home className="w-5 h-5" />
+          </span>
+          <div>
+            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Back to fleet</div>
+            <div className="text-base font-semibold">Overview</div>
+          </div>
+        </Link>
+        <div className="flex-1 min-w-[200px] text-right">
+          <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Truck ID</div>
+          <div className="text-2xl font-semibold text-gray-900 dark:text-white">{truckId}</div>
+          {latest && (
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Updated {new Date(latest.timestamp).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Current status</span>
+          <span
+            className="px-4 py-2 rounded-full font-semibold text-sm text-white"
+            style={{ backgroundColor: statusColor }}
+          >
+            {statusText}
+          </span>
+        </div>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Top-left: local map with colored segments */}
-        <div className="card lg:col-span-1 h-[40vh]">
-          <div className="card-h flex items-center justify-between">
-            <span className="font-semibold">Local Map & Route</span>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className={`${cardClass} xl:col-span-1 min-h-[360px]`}>
+          <div className={cardHeaderClass}>
+            <span className="font-semibold">Driver Region View</span>
             <button
               onClick={() => setShowThresholds(true)}
-              className="px-2 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200"
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               Edit thresholds
             </button>
           </div>
-          <div className="card-b h-full">
-            <MapContainer
-              center={center}
-              zoom={10}
-              className="h-full rounded-lg"
-              scrollWheelZoom
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="&copy; OpenStreetMap contributors"
-              />
-              {coloredSegments.map((seg, idx) => (
-                <Polyline
-                  key={seg.key + "-" + idx}
-                  positions={seg.pts}
-                  pathOptions={{ color: seg.color, weight: 5, opacity: 0.9 }}
+          <div className={`${cardBodyClass} pt-4`}>
+            <div className="h-[280px] rounded-xl overflow-hidden ring-1 ring-gray-200/60 dark:ring-gray-800">
+              <MapContainer
+                key={mapKey}
+                center={center}
+                bounds={focusBounds}
+                zoom={focusBounds ? undefined : 6}
+                scrollWheelZoom
+                className="h-full w-full"
+              >
+                <TileLayer
+                  url={mapTileUrl}
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 />
-              ))}
-            </MapContainer>
+                {coloredSegments.map((seg, idx) => (
+                  <Polyline
+                    key={seg.key + "-" + idx}
+                    positions={seg.pts}
+                    pathOptions={{ color: seg.color, weight: 5, opacity: 0.9 }}
+                  />
+                ))}
+              </MapContainer>
+            </div>
+            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              View is constrained to ~200 miles around the driver&apos;s latest position.
+            </p>
           </div>
         </div>
 
-        {/* Top-right: chart + toggles + status */}
-        <div className="card lg:col-span-2 h-[56vh]">
-          <div className="card-h font-semibold">Signals</div>
-          <div className="card-b h-full flex flex-col gap-3">
-            {/* Variable toggles */}
+        <div className={`${cardClass} xl:col-span-2 min-h-[420px]`}>
+          <div className={cardHeaderClass}>
+            <span className="font-semibold">Signals</span>
+            <Link
+              to={`/long-term/${truckId}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold shadow hover:bg-blue-500 transition-colors"
+            >
+              Long-term data →
+            </Link>
+          </div>
+          <div className={`${cardBodyClass} flex flex-col gap-4`}>
             <div className="flex flex-wrap gap-2">
               {Object.keys(VAR_LABEL).map((k) => {
                 const key = k as VarKey;
@@ -157,8 +218,10 @@ export default function TruckDetail() {
                   <button
                     key={key}
                     onClick={() => setSelectedVar(key)}
-                    className={`px-3 py-1 rounded border text-sm ${
-                      active ? "bg-blue-600 text-white border-blue-600" : "bg-white hover:bg-gray-50"
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-blue-600 text-white shadow border border-blue-600"
+                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
                     }`}
                   >
                     {VAR_LABEL[key]}
@@ -167,11 +230,10 @@ export default function TruckDetail() {
               })}
             </div>
 
-            {/* Chart */}
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.4)" />
                   <XAxis dataKey="time" minTickGap={30} />
                   <YAxis />
                   <Tooltip />
@@ -184,49 +246,49 @@ export default function TruckDetail() {
                     strokeWidth={2}
                     isAnimationActive={false}
                   />
-                  <Brush height={20} />
+                  <Brush height={24} travellerWidth={10} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          </div>
+        </div>
 
-            {/* Status box + Long-term link */}
-            <div className="flex items-center justify-between">
-              <div
-                className="px-3 py-2 rounded font-medium"
-                style={{ backgroundColor: statusToColor(statusText as any), color: "white" }}
-              >
-                Status: {statusText}
-              </div>
-              <Link
-                to={`/long-term/${truckId}`}
-                className="px-3 py-2 rounded bg-blue-600 text-white"
-              >
-                Long-term data →
-              </Link>
+        <div className={`${cardClass} xl:col-span-1 min-h-[320px]`}>
+          <div className={cardHeaderClass}>
+            <span className="font-semibold">Live Driver Feed</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Secure stream</span>
+          </div>
+          <div className={`${cardBodyClass} flex items-center justify-center`}>
+            <div className="w-full h-[220px] rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
+              Live video feed (coming soon)
             </div>
           </div>
         </div>
 
-        {/* Bottom-left: live driver feed placeholder */}
-        <div className="card lg:col-span-1 h-[40vh]">
-          <div className="card-h font-semibold">Live Driver Feed</div>
-          <div className="card-b h-full flex items-center justify-center">
-            <div className="w-full h-full border-2 border-dashed rounded flex items-center justify-center text-gray-500">
-              ▶ Live feed (placeholder)
-            </div>
+        <div className={`${cardClass} xl:col-span-2 min-h-[320px]`}>
+          <div className={cardHeaderClass}>
+            <span className="font-semibold">Alert History</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{truckAlerts.length} events</span>
           </div>
-        </div>
-
-        {/* Bottom-right: alert history for this trip */}
-        <div className="card lg:col-span-2 h-[28vh]">
-          <div className="card-h font-semibold">Alert History (this trip)</div>
-          <div className="card-b h-full overflow-auto space-y-2">
-            {truckAlerts.length === 0 && <div className="text-gray-500">No alerts for this truck.</div>}
+          <div className={`${cardBodyClass} space-y-3 overflow-auto`}>
+            {truckAlerts.length === 0 && (
+              <div className="text-gray-500 dark:text-gray-400">No alerts for this truck.</div>
+            )}
             {truckAlerts.map((a) => (
-              <div key={a.id} className="p-3 rounded border">
-                <div className="font-semibold">{a.status}</div>
-                <div className="text-sm text-gray-600">
-                  {new Date(a.startedAt).toLocaleTimeString()} • Drowsy for {a.secondsDrowsy}s • {a.reason}
+              <div
+                key={a.id}
+                className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col gap-1"
+                style={{ borderLeftWidth: 4, borderLeftColor: statusToColor(a.status) }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">{a.status}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {new Date(a.startedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">{a.reason}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Drowsy for {a.secondsDrowsy}s
                 </div>
               </div>
             ))}
