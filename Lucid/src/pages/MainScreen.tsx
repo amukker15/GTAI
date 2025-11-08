@@ -135,34 +135,45 @@ export default function MainScreen() {
 
   const totals = useMemo(() => {
     const totalTrucks = trucks.length;
-    const activeAlerts = alerts.filter(a => a.status !== "OK").length;
-    const criticalAlerts = alerts.filter(a => a.status === "ASLEEP").length;
-    const flaggedSet = new Set(alerts.filter(a => a.status !== "OK").map(a => a.truckId));
+    const activeAlerts = alerts.filter((a) => a.status !== "OK").length;
+    const criticalAlerts = alerts.filter((a) => a.status === "ASLEEP").length;
+    const flaggedSet = new Set(alerts.filter((a) => a.status !== "OK").map((a) => a.truckId));
     const percentFlagged = totalTrucks ? Math.round((flaggedSet.size / totalTrucks) * 100) : 0;
     return { totalTrucks, activeAlerts, criticalAlerts, percentFlagged };
   }, [trucks, alerts]);
 
+  const activeAlerts = useMemo(() => alerts.filter((a) => a.status !== "OK"), [alerts]);
+  const readinessScore = Math.max(0, 100 - totals.percentFlagged);
+
   const getStatusBadge = (status: string) => {
+    const baseClasses =
+      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide shadow-sm ring-1 ring-inset";
     if (status === "ASLEEP") {
       return (
-        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 flex items-center gap-1">
-          <AlertCircle className="w-3 h-3" />
-          CRITICAL
+        <span
+          className={`${baseClasses} bg-gradient-to-r from-rose-500 to-orange-500 text-white ring-white/10`}
+        >
+          <AlertCircle className="w-3.5 h-3.5" />
+          Critical
         </span>
       );
     }
     if (status === "DROWSY_SOON") {
       return (
-        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 flex items-center gap-1">
-          <AlertTriangle className="w-3 h-3" />
-          WARNING
+        <span
+          className={`${baseClasses} bg-amber-100/80 text-amber-900 ring-amber-300/60 dark:bg-amber-400/10 dark:text-amber-200`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5" />
+          Warning
         </span>
       );
     }
     return (
-      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 flex items-center gap-1">
-        <CheckCircle className="w-3 h-3" />
-        OK
+      <span
+        className={`${baseClasses} bg-emerald-100/90 text-emerald-900 ring-emerald-300/70 dark:bg-emerald-400/10 dark:text-emerald-200`}
+      >
+        <CheckCircle className="w-3.5 h-3.5" />
+        Lucid
       </span>
     );
   };
@@ -256,116 +267,142 @@ export default function MainScreen() {
       </div>
 
       {/* Right: Info Sidebar */}
-      <div className="w-1/3 h-full bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 overflow-y-auto">
-        <div className="p-6 space-y-6">
+      <div className="w-1/3 h-full border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="h-full overflow-y-auto px-6 py-6 space-y-6">
           {/* Hero Stats */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Fleet Overview</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totals.totalTrucks}</div>
-                <div className="text-gray-600 dark:text-gray-400 text-xs mt-1">Active Trucks</div>
+          <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Fleet Overview</h2>
               </div>
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{totals.activeAlerts}</div>
-                <div className="text-gray-600 dark:text-gray-400 text-xs mt-1">Active Alerts</div>
-              </div>
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="text-2xl font-bold text-red-600 dark:text-red-400">{totals.criticalAlerts}</div>
-                <div className="text-gray-600 dark:text-gray-400 text-xs mt-1">Critical</div>
-              </div>
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{totals.percentFlagged}%</div>
-                <div className="text-gray-600 dark:text-gray-400 text-xs mt-1">Flagged</div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Live</span>
               </div>
             </div>
-          </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-300">Active Trucks</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{totals.totalTrucks}</p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-300">Active Alerts</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{totals.activeAlerts}</p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-300">Flagged</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{totals.percentFlagged}%</p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-300">Status</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{readinessScore}%</p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                <span>Fleet Status</span>
+                <span>{readinessScore}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className="h-full bg-blue-600 rounded-full"
+                  style={{ width: `${readinessScore}%` }}
+                ></div>
+              </div>
+            </div>
+          </section>
 
           {/* Active Alerts */}
-          <div>
+          <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Active Alerts</h2>
-              {alerts.filter(a => a.status !== "OK").length > 0 && (
-                <div className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </div>
-              )}
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Active Alerts</h3>
+              <span className="text-sm text-gray-600 dark:text-gray-300">{activeAlerts.length} open</span>
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
-              {alerts.filter(a => a.status !== "OK").length === 0 ? (
-                <div className="text-center py-8 text-gray-400 dark:text-gray-500">
-                  <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
-                  <div className="text-sm">All drivers safe</div>
-                </div>
-              ) : (
-                <div className="p-2 space-y-2">
-                  {alerts.filter(a => a.status !== "OK").map((a) => (
+            {activeAlerts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <CheckCircle className="w-10 h-10 mx-auto mb-2 text-green-500" />
+                <p className="text-sm">All drivers stable</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {activeAlerts.map((a) => {
+                  const isCritical = a.status === "ASLEEP";
+                  return (
                     <button
                       key={a.id}
                       onClick={() => navigate(`/truck/${a.truckId}`)}
-                      className={`w-full text-left p-3 rounded-lg border transition-all hover:shadow-md ${
-                        a.status === "ASLEEP" 
-                          ? "bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/30" 
-                          : "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                      className={`w-full rounded-lg border p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                        isCritical
+                          ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20"
+                          : "border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20"
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-gray-900 dark:text-white">{a.truckId}</span>
-                        {getStatusBadge(a.status)}
-                      </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-300">
-                        {a.reason}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Drowsy for {a.secondsDrowsy}s • {new Date(a.startedAt).toLocaleTimeString()}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 text-xs font-medium rounded ${
+                              isCritical 
+                                ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" 
+                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                            }`}>
+                              {isCritical ? "Critical" : "Warning"}
+                            </span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">Truck {a.truckId}</span>
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{a.reason}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                            {a.secondsDrowsy}s • {new Date(a.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
                       </div>
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           {/* Fleet List */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">All Drivers</h2>
-            <div className="space-y-2">
+          <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">All Drivers</h3>
+            </div>
+            <div className="space-y-3">
               {trucks.map((t) => {
                 const status = thresholds ? getTruckStatus(t.id) : "OK";
-                const alert = alerts.find(a => a.truckId === t.id && a.status !== "OK");
-                
+                const alert = activeAlerts.find((a) => a.truckId === t.id);
+                const history = telemetryByTruckId[t.id] || [];
+                const latest = history[history.length - 1];
+                const perclosPercent = latest ? Math.round(latest.perclos * 100) : null;
+                const heartRate = latest?.heartRate ?? null;
+                const hrv = latest?.hrvRmssd ?? null;
+                const progress = perclosPercent !== null ? Math.min(Math.max(perclosPercent, 0), 100) : 0;
+                const statusColor = statusToColor(status);
+
                 return (
                   <button
                     key={t.id}
                     onClick={() => navigate(`/truck/${t.id}`)}
-                    className="w-full text-left p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm transition-all"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span 
-                            className="w-2 h-2 rounded-full" 
-                            style={{ backgroundColor: statusToColor(status) }}
-                          ></span>
-                          <span className="font-semibold text-sm text-gray-900 dark:text-white">{t.id}</span>
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t.driverName}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-500">
-                          {t.route.from} → {t.route.to}
+                      <div className="flex items-center gap-3">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: statusColor }}></span>
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">{t.driverName}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-300">{t.route.from} → {t.route.to}</p>
                         </div>
                       </div>
-                      {alert && (
-                        <div className="ml-2">
-                          {getStatusBadge(alert.status)}
-                        </div>
-                      )}
+                      <div className="text-right">
+                        {getStatusBadge(alert?.status ?? status)}
+                        {perclosPercent !== null && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{perclosPercent}% fatigue</p>}
+                      </div>
                     </div>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>
