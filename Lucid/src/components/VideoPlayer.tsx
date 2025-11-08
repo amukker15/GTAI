@@ -10,13 +10,12 @@ export default function VideoPlayer({ className = "" }: VideoPlayerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const appStartTime = useStore((s) => s.appStartTime);
   const globalElapsedTime = useStore((s) => s.globalElapsedTime);
   const videoDuration = useStore((s) => s.videoDuration);
 
   // Calculate current video time based on global elapsed time (loop based on actual duration)
   const VIDEO_DURATION = videoDuration || 64;
-  const currentVideoTime = globalElapsedTime % VIDEO_DURATION;
+  const currentVideoTime = Math.min(globalElapsedTime, VIDEO_DURATION);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -25,9 +24,13 @@ export default function VideoPlayer({ className = "" }: VideoPlayerProps) {
     const handleLoadedData = () => {
       setIsLoading(false);
       setError(null);
-      // Auto-play the video and sync to current time
+      // Auto-play the video and sync to current time (only if not past the end)
       video.currentTime = currentVideoTime;
-      video.play().catch(e => console.log("Auto-play blocked:", e));
+      if (currentVideoTime < VIDEO_DURATION) {
+        video.play().catch(e => console.log("Auto-play blocked:", e));
+      } else {
+        video.pause();
+      }
     };
 
     const handleError = () => {
@@ -51,9 +54,18 @@ export default function VideoPlayer({ className = "" }: VideoPlayerProps) {
 
     // Sync video time every second to stay accurate
     const interval = setInterval(() => {
-      const timeDiff = Math.abs(video.currentTime - currentVideoTime);
+      const targetTime = currentVideoTime;
+      const timeDiff = Math.abs(video.currentTime - targetTime);
+
+      if (targetTime >= VIDEO_DURATION) {
+        video.pause();
+        video.currentTime = VIDEO_DURATION;
+        clearInterval(interval);
+        return;
+      }
+
       if (timeDiff > 1) {
-        video.currentTime = currentVideoTime;
+        video.currentTime = targetTime;
       }
     }, 1000);
 
@@ -96,7 +108,7 @@ export default function VideoPlayer({ className = "" }: VideoPlayerProps) {
         muted
         autoPlay
         playsInline
-        loop
+        controls={false}
       />
       
       {/* Live indicator - no controls */}

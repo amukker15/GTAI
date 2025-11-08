@@ -374,9 +374,6 @@ export default function MainScreen() {
                 const history = telemetryByTruckId[t.id] || [];
                 const latest = history[history.length - 1];
                 const perclosPercent = latest ? Math.round(latest.perclos * 100) : null;
-                const heartRate = latest?.heartRate ?? null;
-                const hrv = latest?.hrvRmssd ?? null;
-                const progress = perclosPercent !== null ? Math.min(Math.max(perclosPercent, 0), 100) : 0;
                 const statusColor = statusToColor(status);
 
                 return (

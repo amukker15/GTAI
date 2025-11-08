@@ -1,36 +1,27 @@
 // src/pages/TruckDetail.tsx
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useMemo } from "react";
 import { useStore } from "../state/store";
+import type { AnalysisResult } from "../state/store";
 import type { LatLngTuple, LatLngBoundsExpression } from "leaflet";
 import { MapContainer, TileLayer, Polyline } from "react-leaflet";
 import {
-  LineChart,
+  LineChart as ReLineChart,
   Line,
   CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
-  Brush,
   ResponsiveContainer,
+  LabelList,
 } from "recharts";
+import type { LabelProps } from "recharts";
 import { computeStatus, statusToColor } from "../lib/status";
 import type { DriverStatus } from "../lib/status";
 import type { Telemetry, Thresholds, Truck } from "../lib/types";
 import { useDarkMode } from "../context/DarkModeContext";
-import { AlertCircle, AlertTriangle, Home, Radar, Timeline } from "../components/icons";
+import { AlertCircle, AlertTriangle, Radar, Timeline, LineChart as LineChartIcon } from "../components/icons";
 import VideoPlayer from "../components/VideoPlayer";
-
-type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
-
-const VAR_LABEL: Record<VarKey, string> = {
-  perclos: "PERCLOS",
-  headDownDegrees: "Head Down (°)",
-  yawnCount30s: "Yawns / 30s",
-  heartRate: "Heart Rate (bpm)",
-  hrvRmssd: "HRV RMSSD (ms)",
-};
 
 const MAP_LEGEND = [
   { label: "Lucid", color: statusToColor("OK") },
@@ -41,34 +32,253 @@ const MAP_LEGEND = [
 const SURFACE_CLASS =
   "relative rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-950/60 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.9)] backdrop-blur";
 
-type ChartTooltipPayload = {
-  value?: number | string;
-  dataKey?: string | number;
+type AnalysisPoint = AnalysisResult & {
+  tsLabel: string;
+  bucketIndex: number;
+  intervalLabel: string;
+  perclosPercent: number;
+  yawnDutyPercent: number;
+  droopDutyPercent: number;
+  state: DriverStatus;
+  stateReason: string;
+  dimPoint: boolean;
 };
 
-type ChartTooltipProps = {
+type TooltipProps = {
   active?: boolean;
-  payload?: ChartTooltipPayload[];
-  label?: string | number;
+  payload?: { payload: AnalysisPoint }[];
 };
 
-const SignalTooltip = ({ active, payload, label }: ChartTooltipProps) => {
-  if (!active || !payload?.length) return null;
-  const point = payload[0];
-  const numericValue = typeof point.value === "number" ? point.value : Number(point.value);
-  const formattedValue = Number.isFinite(numericValue)
-    ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
-    : point.value ?? "—";
-  const dataKey = (point.dataKey ?? "") as VarKey | string;
+const STATE_LABEL: Record<DriverStatus, string> = {
+  OK: "Lucid",
+  DROWSY_SOON: "Drowsy",
+  ASLEEP: "Asleep",
+};
 
+const formatSeconds = (totalSeconds: number) => {
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+};
+
+const formatInterval = (bucketIndex: number) => {
+  const start = (bucketIndex - 1) * 30;
+  const end = bucketIndex * 30;
+  return `${formatSeconds(start)}-${formatSeconds(end)}`;
+};
+
+const formatClockLabel = (ts: string) => {
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
+
+type StateAssessment = {
+  state: DriverStatus;
+  reason: string;
+};
+
+const assessDriverState = (sample: AnalysisResult | undefined): StateAssessment => {
+  if (!sample) {
+    return { state: "OK", reason: "Awaiting data" };
+  }
+
+  const perclosPct = sample.perclos_30s * 100;
+  const yawDutyPct = sample.yawn_duty_30s * 100;
+  const droopDutyPct = sample.droop_duty_30s * 100;
+  const pitchThreshold = sample.pitch_thresh_Tp;
+
+  const highPerclos = sample.perclos_30s >= 0.6;
+  const medPerclos = sample.perclos_30s >= 0.4;
+  const severeHeadDrop = sample.pitchdown_avg_30s >= pitchThreshold + 5 || sample.pitchdown_max_30s >= pitchThreshold + 8;
+  const headTrending = sample.pitchdown_avg_30s >= pitchThreshold || sample.pitchdown_max_30s >= pitchThreshold + 4;
+  const yawOverload = sample.yawn_duty_30s >= 0.55;
+  const yawElevated = sample.yawn_count_30s >= 2 || sample.yawn_duty_30s >= 0.35;
+  const droopHeavy = sample.droop_time_30s >= 18 || droopDutyPct >= 60;
+  const droopElevated = sample.droop_time_30s >= 12 || droopDutyPct >= 40;
+
+  if (highPerclos) {
+    return { state: "ASLEEP", reason: `High fatigue detected (PERCLOS ${perclosPct.toFixed(1)}%)` };
+  }
+
+  if (severeHeadDrop) {
+    return {
+      state: "ASLEEP",
+      reason: `Head drop beyond threshold (${sample.pitchdown_avg_30s.toFixed(1)}° vs ${pitchThreshold.toFixed(1)}°)`,
+    };
+  }
+
+  if (yawOverload) {
+    return {
+      state: "ASLEEP",
+      reason: `Continuous yawning (${yawDutyPct.toFixed(1)}% duty)`,
+    };
+  }
+
+  if (droopHeavy) {
+    return {
+      state: "ASLEEP",
+      reason: `Extended head droop (${sample.droop_time_30s.toFixed(1)}s down)`,
+    };
+  }
+
+  if (medPerclos) {
+    return { state: "DROWSY_SOON", reason: `Elevated PERCLOS (${perclosPct.toFixed(1)}%)` };
+  }
+
+  if (yawElevated) {
+    return {
+      state: "DROWSY_SOON",
+      reason: `Frequent yawning (${sample.yawn_count_30s} in 30s)`,
+    };
+  }
+
+  if (headTrending || droopElevated) {
+    return {
+      state: "DROWSY_SOON",
+      reason: `Head pose nearing threshold (avg ${sample.pitchdown_avg_30s.toFixed(1)}°)`,
+    };
+  }
+
+  return { state: "OK", reason: "Vitals within safe thresholds" };
+};
+
+const hasQualityWarning = (sample: AnalysisResult | undefined) => {
+  if (!sample) return false;
+  return sample.confidence !== "OK" || sample.fps < 24;
+};
+
+const PerclosTooltip = ({ active, payload }: TooltipProps) => {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
-      <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-base font-semibold text-slate-900 dark:text-white">{formattedValue}</div>
-      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-        {VAR_LABEL[dataKey as VarKey] ?? dataKey}
+      <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
+      <div className="text-base font-semibold text-slate-900 dark:text-white">{point.perclosPercent.toFixed(1)}%</div>
+      <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+        <p>EAR threshold: {point.ear_thresh_T.toFixed(3)}</p>
+        <p>PERCLOS ratio: {point.perclos_30s.toFixed(3)}</p>
+        <p>Confidence: {point.confidence} · FPS: {point.fps}</p>
+        <p>Bucket: {point.intervalLabel}</p>
+      </div>
+      {point.dimPoint && (
+        <p className="mt-1 text-[11px] font-semibold text-amber-500">⚠️ Low confidence frame</p>
+      )}
+    </div>
+  );
+};
+
+const HeadPoseTooltip = ({ active, payload }: TooltipProps) => {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
+      <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
+      <div className="text-base font-semibold text-slate-900 dark:text-white">{point.pitchdown_avg_30s.toFixed(1)}° avg</div>
+      <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+        <p>Max droop: {point.pitchdown_max_30s.toFixed(1)}°</p>
+        <p>Threshold: {point.pitch_thresh_Tp.toFixed(1)}°</p>
+        <p>Droop duty: {(point.droop_duty_30s * 100).toFixed(1)}% · Droop time: {point.droop_time_30s.toFixed(1)}s</p>
+        <p>Confidence: {point.confidence} · FPS: {point.fps}</p>
+      </div>
+      {point.dimPoint && (
+        <p className="mt-1 text-[11px] font-semibold text-amber-500">⚠️ Sensor quality dip</p>
+      )}
+    </div>
+  );
+};
+
+const YawningTooltip = ({ active, payload }: TooltipProps) => {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
+      <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
+      <div className="text-base font-semibold text-slate-900 dark:text-white">{point.yawnDutyPercent.toFixed(1)}% duty</div>
+      <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+        <p>Yawn count: {point.yawn_count_30s}</p>
+        <p>Active yawning: {point.yawn_time_30s.toFixed(1)}s</p>
+        {Number.isFinite(point.yawn_peak_30s) && <p>Peak openness: {point.yawn_peak_30s.toFixed(3)}</p>}
+        <p>Bucket: {point.intervalLabel}</p>
       </div>
     </div>
+  );
+};
+
+type DotPropsLite = {
+  cx?: number;
+  cy?: number;
+  payload?: AnalysisPoint;
+};
+
+type LabelPropsLite = {
+  x?: number | string;
+  y?: number | string;
+  value?: number | string;
+};
+
+const StatusDot = ({ cx, cy, payload }: DotPropsLite) => {
+  if (cx === undefined || cy === undefined || !payload) return null;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4.5}
+      fill={statusToColor(payload.state)}
+      opacity={payload.dimPoint ? 0.35 : 0.95}
+    />
+  );
+};
+
+const HeadPoseDot = ({ cx, cy, payload }: DotPropsLite) => {
+  if (cx === undefined || cy === undefined || !payload) return null;
+  const exceeds = payload.pitchdown_max_30s >= payload.pitch_thresh_Tp;
+  if (exceeds) {
+    const size = 6;
+    return (
+      <path
+        d={`M ${cx} ${cy - size} L ${cx - size} ${cy + size} L ${cx + size} ${cy + size} Z`}
+        fill="#f97316"
+        opacity={payload.dimPoint ? 0.6 : 1}
+      />
+    );
+  }
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4.5}
+      fill="#6366f1"
+      opacity={payload.dimPoint ? 0.35 : 0.95}
+    />
+  );
+};
+
+const YawnDot = ({ cx, cy, payload }: DotPropsLite) => {
+  if (cx === undefined || cy === undefined || !payload) return null;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4.5}
+      fill="#06b6d4"
+      opacity={payload.dimPoint ? 0.4 : 0.95}
+    />
+  );
+};
+
+const YawnCountLabel = ({ x, y, value }: LabelPropsLite) => {
+  if (x === undefined || y === undefined || value === undefined) return null;
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  if (Number(value) === 0) return null;
+  return (
+    <text x={x} y={y - 10} textAnchor="middle" fill="#64748b" fontSize={10} fontWeight={600}>
+      {value}
+    </text>
   );
 };
 
@@ -76,16 +286,10 @@ export default function TruckDetail() {
   const { truckId = "" } = useParams();
   const truck = useStore((s) => s.trucks.find((t: Truck) => t.id === truckId));
   const telemetryByTruckId = useStore((s) => s.telemetryByTruckId);
-  const allAlerts = useStore((s) => s.alerts);
   const thresholds = useStore((s) => s.thresholds) as Thresholds | null;
-  const selectedVar = useStore((s) => s.selectedVar);
-  const setSelectedVar = useStore((s) => s.setSelectedVar);
   const analysisResults = useStore((s) => s.analysisResults);
   const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
   const { darkMode } = useDarkMode();
-
-  // Get latest analysis result for current data display
-  const latestAnalysis = analysisResults[analysisResults.length - 1];
 
   // Local UI state
 
@@ -103,27 +307,28 @@ export default function TruckDetail() {
   }, [latest]);
   const mapKey = latest ? `${truckId}-${latest.timestamp}` : "no-data";
 
-  // Build chart data from analysis results
-  const chartData = useMemo(
+  const timelinePoints = useMemo<AnalysisPoint[]>(
     () =>
-      analysisResults.map((result) => {
-        // Simulate heart rate and HRV based on analysis data
-        const baseHeartRate = 72;
-        const baseHRV = 45;
-        const heartRate = Math.round(baseHeartRate + (result.perclos_30s * 20)); // Higher PERCLOS = higher HR
-        const hrvRmssd = Math.round(baseHRV - (result.perclos_30s * 15)); // Higher PERCLOS = lower HRV
-        
+      analysisResults.map((result, index) => {
+        const bucketIndex = index + 1;
+        const { state, reason } = assessDriverState(result);
         return {
-          time: new Date(result.ts_end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-          perclos: Number((result.perclos_30s).toFixed(3)),
-          headDownDegrees: result.pitchdown_avg_30s,
-          yawnCount30s: result.yawn_count_30s,
-          heartRate: heartRate,
-          hrvRmssd: hrvRmssd,
+          ...result,
+          tsLabel: formatClockLabel(result.ts_end),
+          bucketIndex,
+          intervalLabel: formatInterval(bucketIndex),
+          perclosPercent: Number((result.perclos_30s * 100).toFixed(1)),
+          yawnDutyPercent: Number((result.yawn_duty_30s * 100).toFixed(1)),
+          droopDutyPercent: Number((result.droop_duty_30s * 100).toFixed(1)),
+          state,
+          stateReason: reason,
+          dimPoint: hasQualityWarning(result),
         };
       }),
     [analysisResults]
   );
+
+  const latestPoint = timelinePoints[timelinePoints.length - 1];
 
   // Color route segments by status (compute with small rolling window)
   const coloredSegments = useMemo(() => {
@@ -147,36 +352,18 @@ export default function TruckDetail() {
 
   // Generate alerts based on analysis results
   const truckAlerts = useMemo(() => {
-    return analysisResults
-      .map((result, index) => {
-        const isDrowsy = result.perclos_30s > 0.4 || result.yawn_count_30s > 2;
-        const isAsleep = result.perclos_30s > 0.6 || result.confidence !== "OK";
-        
-        if (isAsleep) {
-          return {
-            id: `alert_${index}`,
-            truckId: truckId || "demo_truck",
-            status: "ASLEEP",
-            reason: `High fatigue detected (PERCLOS: ${(result.perclos_30s * 100).toFixed(1)}%)`,
-            startedAt: result.ts_end,
-            secondsDrowsy: 30,
-            timeInterval: `${Math.floor(index * 30 / 60)}:${String(index * 30 % 60).padStart(2, '0')}-${Math.floor((index + 1) * 30 / 60)}:${String((index + 1) * 30 % 60).padStart(2, '0')}`
-          };
-        } else if (isDrowsy) {
-          return {
-            id: `alert_${index}`,
-            truckId: truckId || "demo_truck", 
-            status: "DROWSY_SOON",
-            reason: `Drowsiness indicators (PERCLOS: ${(result.perclos_30s * 100).toFixed(1)}%, Yawns: ${result.yawn_count_30s})`,
-            startedAt: result.ts_end,
-            secondsDrowsy: 30,
-            timeInterval: `${Math.floor(index * 30 / 60)}:${String(index * 30 % 60).padStart(2, '0')}-${Math.floor((index + 1) * 30 / 60)}:${String((index + 1) * 30 % 60).padStart(2, '0')}`
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
-  }, [analysisResults, truckId]);
+    return timelinePoints
+      .filter((point) => point.state !== "OK")
+      .map((point, index) => ({
+        id: `alert_${index}`,
+        truckId: truckId || "demo_truck",
+        status: point.state,
+        reason: point.stateReason,
+        startedAt: point.ts_end,
+        secondsDrowsy: 30,
+        timeInterval: point.intervalLabel,
+      }));
+  }, [timelinePoints, truckId]);
 
   // Status text
   const statusText = useMemo<DriverStatus>(() => {
@@ -190,25 +377,22 @@ export default function TruckDetail() {
 
   const driverName = truck?.driverName ?? "Demo Driver";
   const routeLabel = truck ? `${truck.route.from} → ${truck.route.to}` : "Demo Route";
-  const companyLabel = truck?.company ?? "—";
-  const lastUpdateText = secondsSinceLastApiCall === 0 
-    ? "Just updated"
-    : `${secondsSinceLastApiCall}s ago`;
+  const lastUpdateText = `${secondsSinceLastApiCall}s`;
 
   // Use latest analysis results instead of mock telemetry
-  const perclosPercent = latestAnalysis ? Math.round(latestAnalysis.perclos_30s * 100) : null;
-  const headDownDegrees = latestAnalysis?.pitchdown_avg_30s ?? null;
-  const yawnCount = latestAnalysis?.yawn_count_30s ?? null;
+  const perclosPercent = latestPoint ? Math.round(latestPoint.perclosPercent) : null;
+  const headDownDegrees = latestPoint?.pitchdown_avg_30s ?? null;
+  const yawnCount = latestPoint?.yawn_count_30s ?? null;
   
   // Simulate heart rate and HRV based on analysis data
   const baseHeartRate = 72;
-  const heartRate = latestAnalysis 
-    ? Math.round(baseHeartRate + (latestAnalysis.perclos_30s * 20)) // Higher PERCLOS = higher HR
+  const heartRate = latestPoint 
+    ? Math.round(baseHeartRate + (latestPoint.perclos_30s * 20)) // Higher PERCLOS = higher HR
     : null;
   
   const baseHRV = 45;
-  const hrvRmssd = latestAnalysis 
-    ? Math.round(baseHRV - (latestAnalysis.perclos_30s * 15)) // Higher PERCLOS = lower HRV
+  const hrvRmssd = latestPoint 
+    ? Math.round(baseHRV - (latestPoint.perclos_30s * 15)) // Higher PERCLOS = lower HRV
     : null;
 
   const biometrics = [
@@ -248,21 +432,17 @@ export default function TruckDetail() {
   const axisColor = darkMode ? "#94a3b8" : "#475569";
   const gridColor = darkMode ? "rgba(148,163,184,0.35)" : "rgba(15,23,42,0.08)";
   const lineColor = darkMode ? "#38bdf8" : "#2563eb";
+  const headPoseColor = darkMode ? "#c084fc" : "#7c3aed";
+  const yawLineColor = darkMode ? "#5eead4" : "#0ea5e9";
 
-  const latestChartData = chartData[chartData.length - 1];
-  const selectedValue = latestChartData ? latestChartData[selectedVar] : null;
-  const formattedSelectedValue = useMemo(() => {
-    if (selectedValue === null || selectedValue === undefined) return "—";
-    if (typeof selectedValue === "number") {
-      if (selectedVar === "perclos") return `${Math.round(selectedValue * 100)}%`;
-      if (selectedVar === "headDownDegrees") return `${selectedValue.toFixed(0)}°`;
-      if (selectedVar === "yawnCount30s") return selectedValue.toFixed(0);
-      if (selectedVar === "heartRate") return `${selectedValue.toFixed(0)} bpm`;
-      if (selectedVar === "hrvRmssd") return `${selectedValue.toFixed(0)} ms`;
-      return selectedValue.toLocaleString();
-    }
-    return selectedValue;
-  }, [selectedValue, selectedVar]);
+  const renderChartPlaceholder = () => (
+    <div className="flex h-full w-full items-center justify-center text-slate-500 dark:text-slate-400">
+      <div className="text-center">
+        <div className="animate-pulse">Waiting for first 30-second analysis</div>
+        <div className="text-xs mt-1">Next bucket arrives automatically</div>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -353,80 +533,152 @@ export default function TruckDetail() {
               </div>
             </section>
 
-            {/* Biometric Chart - Single Chart with Selector */}
             <section className={`${SURFACE_CLASS}`}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
                 <div className="flex items-center gap-2">
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-200">
-                    <LineChart className="h-4 w-4" />
+                    <LineChartIcon className="h-4 w-4" />
                   </span>
                   <div>
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Biometric tracking</p>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{VAR_LABEL[selectedVar]}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Live biometrics</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">New bucket every 30s</p>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {Object.keys(VAR_LABEL).map((k) => {
-                    const key = k as VarKey;
-                    const active = selectedVar === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setSelectedVar(key)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          active
-                            ? "bg-blue-600 text-white shadow border border-blue-600"
-                            : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        {VAR_LABEL[key]}
-                      </button>
-                    );
-                  })}
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Latest state</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {latestPoint ? STATE_LABEL[latestPoint.state] : "Awaiting signal"}
+                  </p>
                 </div>
               </div>
-              <div className="px-4 py-3">
-                <div className="h-[300px] w-full min-h-[300px] min-w-[400px]">
-                  {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%" minHeight={300} minWidth={400}>
-                      <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="time" 
-                          tick={{ fill: axisColor, fontSize: 12 }}
-                          tickMargin={8}
-                          minTickGap={30}
-                        />
-                        <YAxis 
-                          tick={{ fill: axisColor, fontSize: 12 }}
-                          tickMargin={8}
-                        />
-                        <Tooltip content={<SignalTooltip />} />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey={selectedVar}
-                          stroke={lineColor}
-                          strokeWidth={2}
-                          dot={false}
-                          connectNulls={false}
-                          isAnimationActive={false}
-                        />
-                        <Brush height={24} travellerWidth={10} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-slate-500 dark:text-slate-400">
-                      <div className="text-center">
-                        <div className="animate-pulse">Loading analysis data...</div>
-                        <div className="text-xs mt-1">Waiting for first 30-second analysis</div>
-                      </div>
+              <div className="px-4 py-4 space-y-4">
+                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-900/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">PERCLOS chart</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Eye closure · % of last 30s</p>
                     </div>
-                  )}
+                    <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
+                      {perclosPercent !== null ? `${perclosPercent}%` : "—"}
+                    </div>
+                  </div>
+                  <div className="h-[220px] w-full">
+                    {timelinePoints.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                          <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                          <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}%`} width={45} />
+                          <Tooltip content={<PerclosTooltip />} />
+                          <Line
+                            type="monotone"
+                            dataKey="perclosPercent"
+                            stroke={lineColor}
+                            strokeWidth={2}
+                            dot={<StatusDot />}
+                            isAnimationActive={false}
+                          />
+                        </ReLineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      renderChartPlaceholder()
+                    )}
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Points tinted by driver state · tooltips include confidence + fps</p>
                 </div>
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Current value: {formattedSelectedValue}
-                </p>
+
+                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-900/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Head pose chart</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Pitch-down vs threshold</p>
+                    </div>
+                    {latestPoint && (
+                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                          Droop time: {latestPoint.droop_time_30s.toFixed(1)}s
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                          Duty: {latestPoint.droopDutyPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="h-[220px] w-full">
+                    {timelinePoints.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                          <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                          <YAxis tick={{ fill: axisColor, fontSize: 11 }} unit="°" width={45} />
+                          <Tooltip content={<HeadPoseTooltip />} />
+                          <Line
+                            type="monotone"
+                            dataKey="pitchdown_avg_30s"
+                            stroke={headPoseColor}
+                            strokeWidth={2}
+                            dot={<HeadPoseDot />}
+                            isAnimationActive={false}
+                          />
+                          <Line
+                            type="stepAfter"
+                            dataKey="pitch_thresh_Tp"
+                            stroke="#94a3b8"
+                            strokeWidth={1.5}
+                            strokeDasharray="5 5"
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </ReLineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      renderChartPlaceholder()
+                    )}
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Triangles mark buckets where max pitchdown exceeded the threshold</p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-900/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Yawning chart</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Duty cycle · counts annotated</p>
+                    </div>
+                    <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
+                      {yawnCount !== null ? `${yawnCount} yawns` : "—"}
+                    </div>
+                  </div>
+                  <div className="h-[220px] w-full">
+                    {timelinePoints.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                          <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                          <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}%`} width={45} />
+                          <Tooltip content={<YawningTooltip />} />
+                          <Line
+                            type="monotone"
+                            dataKey="yawnDutyPercent"
+                            stroke={yawLineColor}
+                            strokeWidth={2}
+                            dot={<YawnDot />}
+                            isAnimationActive={false}
+                          >
+                            <LabelList
+                              dataKey="yawn_count_30s"
+                              content={(props: LabelProps) => (
+                                <YawnCountLabel x={props.x} y={props.y} value={props.value as number} />
+                              )}
+                            />
+                          </Line>
+                        </ReLineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      renderChartPlaceholder()
+                    )}
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Numbers above each marker show yawns counted in that 30s slice</p>
+                </div>
               </div>
             </section>
 
@@ -573,4 +825,3 @@ export default function TruckDetail() {
     </div>
   );
 }
-

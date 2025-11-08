@@ -22,45 +22,12 @@ export default function AppHeader() {
   const headerRef = useRef<HTMLElement | null>(null);
   const navRefs = useRef<(HTMLElement | null)[]>([]);
   const trucks = useStore((s) => s.trucks);
-  const alerts = useStore((s) => s.alerts);
-  const telemetryByTruckId = useStore((s) => s.telemetryByTruckId);
   const resetGlobalTimer = useStore((s) => s.resetGlobalTimer);
   const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
   const firstTruckId = trucks[0]?.id ?? null;
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
 
   const pathname = location.pathname;
-
-  const metrics = useMemo(() => {
-    const totalTrucks = trucks.length;
-    const activeAlerts = alerts.filter((a) => a.status !== "OK");
-    const flaggedDrivers = new Set(activeAlerts.map((a) => a.truckId));
-    const fleetHealth = totalTrucks
-      ? Math.max(0, Math.round(((totalTrucks - flaggedDrivers.size) / totalTrucks) * 100))
-      : 100;
-
-    let latest = 0;
-    Object.values(telemetryByTruckId).forEach((samples) => {
-      const last = samples.at(-1);
-      if (last) {
-        const ts = Date.parse(last.timestamp);
-        if (!Number.isNaN(ts)) {
-          latest = Math.max(latest, ts);
-        }
-      }
-    });
-
-    const lastUpdated = secondsSinceLastApiCall === 0 
-      ? "Just updated"
-      : `${secondsSinceLastApiCall}s ago`;
-
-    return {
-      totalTrucks,
-      activeAlerts: activeAlerts.length,
-      fleetHealth,
-      lastUpdated,
-    };
-  }, [alerts, telemetryByTruckId, trucks]);
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -94,29 +61,6 @@ export default function AppHeader() {
     ],
     [firstTruckId]
   );
-
-  const statPills = [
-    {
-      label: "Drivers monitored",
-      value: metrics.totalTrucks || "—",
-      hint: metrics.totalTrucks ? "streaming now" : "loading fleet",
-    },
-    {
-      label: "Live alerts",
-      value: metrics.activeAlerts,
-      hint: metrics.activeAlerts ? "needs review" : "all clear",
-    },
-    {
-      label: "Fleet health",
-      value: `${metrics.fleetHealth}%`,
-      hint: "awake & compliant",
-    },
-    {
-      label: "Last sync",
-      value: metrics.lastUpdated,
-      hint: "system clock",
-    },
-  ];
 
   const activeIndex = navItems.findIndex((item) => item.match(pathname));
 
@@ -228,7 +172,7 @@ export default function AppHeader() {
       <div className="relative mx-auto max-w-full px-6 py-3">
         <div className="flex items-center justify-between gap-6">
           {/* Brand Section - Left */}
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
             <button 
               onClick={handleLogoClick}
               className="focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-transform hover:scale-105"
@@ -240,6 +184,10 @@ export default function AppHeader() {
                 className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(40,40,40))_drop-shadow(-1px_0_0_rgb(51,51,51))_drop-shadow(0_1px_0_rgb(51,51,51))_drop-shadow(0_-1px_0_rgb(51,51,51))_drop-shadow(1px_1px_0_rgb(51,51,51))_drop-shadow(-1px_-1px_0_rgb(51,51,51))_drop-shadow(1px_-1px_0_rgb(51,51,51))_drop-shadow(-1px_1px_0_rgb(51,51,51))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
               />
             </button>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Last update</p>
+              <p className="text-xs font-semibold text-slate-900 dark:text-white">{secondsSinceLastApiCall}s</p>
+            </div>
           </div>
 
           {/* Navigation - Center */}

@@ -24,17 +24,6 @@ export type AnalysisResult = {
   fps: number;
 };
 
-type GlobalTimingData = {
-  appStartTime: number;
-  globalElapsedTime: number;
-  lastApiCallTime: number;
-  secondsSinceLastApiCall: number;
-  analysisResults: AnalysisResult[];
-  currentSessionId: string;
-  isAnalysisRunning: boolean;
-  videoDuration: number | null;
-};
-
 type Store = {
   trucks: Truck[];
   telemetryByTruckId: Record<string, Telemetry[]>;
@@ -130,23 +119,35 @@ export const useStore = create<Store>((set, get) => ({
   setSelectedVar: (v) => set({ selectedVar: v }),
 
   startGlobalTimer: () => {
+    // Ensure we never create overlapping timers
+    if (globalTimerInterval) {
+      clearInterval(globalTimerInterval);
+      globalTimerInterval = null;
+    }
+
     const startTime = Date.now();
-    set({ appStartTime: startTime, isAnalysisRunning: true });
-    
+    set({ appStartTime: startTime, isAnalysisRunning: false });
+
     // Update elapsed time every second
     globalTimerInterval = window.setInterval(() => {
       const now = Date.now();
       const elapsed = Math.floor((now - get().appStartTime) / 1000);
       const sinceLast = get().lastApiCallTime > 0 ? Math.floor((now - get().lastApiCallTime) / 1000) : elapsed;
-      
+      const videoLimit = get().videoDuration || 64;
+      const clampedElapsed = Math.min(elapsed, videoLimit);
+
       set({ 
-        globalElapsedTime: elapsed,
+        globalElapsedTime: clampedElapsed,
         secondsSinceLastApiCall: sinceLast
       });
-      
+
       // Trigger API call every 30 seconds
-      if (elapsed > 0 && elapsed % 30 === 0) {
+      if (clampedElapsed > 0 && clampedElapsed % 30 === 0 && clampedElapsed <= videoLimit) {
         get().performVideoAnalysis();
+      }
+
+      if (clampedElapsed >= videoLimit) {
+        get().stopGlobalTimer();
       }
     }, 1000);
   },
@@ -208,20 +209,24 @@ export const useStore = create<Store>((set, get) => ({
       const state = get();
       const currentTime = state.globalElapsedTime;
       const sessionId = state.currentSessionId;
-      
+      const videoDuration = state.videoDuration || 64;
+
       // Prevent multiple simultaneous analysis calls
       if (state.isAnalysisRunning) {
         console.log(`[VideoAnalysis] Skipping analysis at ${currentTime}s - analysis already running`);
         return;
       }
-      
+
+      if (currentTime === 0 || currentTime > videoDuration) {
+        return;
+      }
+
       // Set analysis running flag
       set({ isAnalysisRunning: true });
-      
-      // Use dynamic video duration from backend, fallback to 64 seconds
-      const VIDEO_DURATION = state.videoDuration || 64;
-      const videoTimestamp = currentTime % VIDEO_DURATION;
-      
+
+      // Clamp timestamp to video duration and avoid wrapping
+      const videoTimestamp = Math.min(currentTime, Math.max(videoDuration - 0.01, 0));
+
       console.log(`[VideoAnalysis] Performing analysis at ${currentTime}s (video time: ${videoTimestamp}s)`);
       
       // Create form data for analysis (no need to upload video - backend will use footage directory)
