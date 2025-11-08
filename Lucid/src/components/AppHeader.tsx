@@ -1,5 +1,5 @@
 import DarkModeToggle from "./DarkModeToggle";
-import { Shield } from "lucide-react";
+import { Shield } from "./icons";
 
 export default function AppHeader() {
   return (

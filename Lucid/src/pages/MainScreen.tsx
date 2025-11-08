@@ -4,7 +4,7 @@ import { useStore } from "../state/store";
 import { useMemo } from "react";
 import { computeStatus, statusToColor } from "../lib/status";
 import { useDarkMode } from "../context/DarkModeContext";
-import { AlertCircle, AlertTriangle, CheckCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle } from "../components/icons";
 
 export default function MainScreen() {
   const navigate = useNavigate();
