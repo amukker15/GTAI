@@ -131,7 +131,7 @@ export default function MainScreen() {
   const alerts = useStore((s) => s.alerts);
   const thresholds = useStore((s) => s.thresholds);
   const { darkMode } = useDarkMode();
-  const cityColor = "#dc2626";
+  const cityColor = "#06b6d4";
 
   const totals = useMemo(() => {
     const totalTrucks = trucks.length;
@@ -201,7 +201,7 @@ export default function MainScreen() {
               pathOptions={{
                 color: cityColor,
                 fillColor: cityColor,
-                fillOpacity: 0.9,
+                fillOpacity: 0.75,
                 weight: 2,
               }}
               interactive={false}
@@ -216,9 +216,9 @@ export default function MainScreen() {
               key={`route-${idx}`}
               positions={route}
               pathOptions={{
-                color: "#dc2626",
+                color: "#06b6d4",
                 weight: 3.5,
-                opacity: 0.8,
+                opacity: 0.5,
                 lineCap: "round",
               }}
             />
