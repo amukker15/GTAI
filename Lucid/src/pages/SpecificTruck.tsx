@@ -123,15 +123,15 @@ export default function TruckDetail() {
     >
       <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur px-6 py-5 flex flex-wrap items-center gap-5 justify-between">
         <Link
-          to="/"
+          to="/driver-studio"
           className="flex items-center gap-3 text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-200 transition-colors"
         >
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/40">
             <Home className="w-5 h-5" />
           </span>
           <div>
-            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Back to fleet</div>
-            <div className="text-base font-semibold">Overview</div>
+            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Back to</div>
+            <div className="text-base font-semibold">Driver Selection</div>
           </div>
         </Link>
         <div className="flex-1 min-w-[200px] text-right">

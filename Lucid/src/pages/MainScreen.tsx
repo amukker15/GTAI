@@ -187,14 +187,11 @@ export default function MainScreen() {
   };
 
   return (
-    <div
-      className="fixed inset-0 flex"
-      style={{ paddingTop: "var(--app-header-height, 96px)" }}
-    >
-      {/* Left: Full-height Map */}
-      <div className="w-2/3 h-full">
+    <div className="fixed inset-0">
+      {/* Base Layer: Full-screen Map */}
+      <div className="absolute inset-0 z-0" style={{ paddingTop: "var(--app-header-height, 96px)" }}>
         <MapContainer
-          center={[39.5, -98.35]}
+          center={[39.5, -80]}
           zoom={4}
           minZoom={4}
           className="h-full w-full"
@@ -266,8 +263,11 @@ export default function MainScreen() {
         </MapContainer>
       </div>
 
-      {/* Right: Info Sidebar */}
-      <div className="w-1/3 h-full border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      {/* Overlay Layer: Right Pane with Frosted Glass */}
+      <div 
+        className="fixed right-0 top-0 w-1/3 h-full z-10 border-l border-white/20 dark:border-gray-700/30 bg-white/20 dark:bg-gray-900/20 backdrop-blur-2xl shadow-2xl"
+        style={{ paddingTop: "var(--app-header-height, 96px)" }}
+      >
         <div className="h-full overflow-y-auto px-6 py-6 space-y-6">
           {/* Hero Stats */}
           <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5">

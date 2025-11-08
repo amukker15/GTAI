@@ -138,21 +138,20 @@ export default function AppHeader() {
   ];
 
   const pathname = location.pathname;
+  const activeIndex = navItems.findIndex((item) => item.match(pathname));
 
-  const renderNavTab = (item: NavItem) => {
+  const renderNavTab = (item: NavItem, index: number) => {
     const isActive = item.match(pathname);
-    const baseClasses = `flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+    const baseClasses = `relative flex items-center justify-center gap-2 flex-1 px-4 py-2.5 transition-colors duration-200 ${
       isActive
-        ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50"
+        ? "text-blue-600 dark:text-blue-400"
+        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
     } ${item.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`;
 
     const content = (
-      <div className="flex items-center gap-2">
-        <span className={`${isActive ? "text-blue-600 dark:text-blue-400" : ""}`}>
-          {item.icon}
-        </span>
-        <span className="text-sm font-medium">{item.label}</span>
+      <div className="flex items-center gap-2 relative z-10">
+        <span>{item.icon}</span>
+        <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>
       </div>
     );
 
@@ -195,38 +194,37 @@ export default function AppHeader() {
   return (
     <header
       ref={headerRef}
-      className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/60 dark:border-slate-700/60 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md"
+      className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"
     >
-      <div className="relative mx-auto max-w-6xl px-6 py-3">
-        <div className="flex items-center justify-between gap-6">
-          {/* Brand Section */}
-          <div className="flex items-center">
-            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Lucid</h1>
+      <div className="relative mx-auto max-w-6xl px-3 py-3">
+        <div className="grid grid-cols-3 items-center gap-6">
+          {/* Brand Section - Left */}
+          <div className="flex items-center justify-start">
+            <img 
+              src="/media/logo.png" 
+              alt="Lucid" 
+              className="h-12 w-auto" 
+              style={{ filter: 'drop-shadow(3px 3px 6px rgba(0, 0, 0, 0.5))' }}
+            />
           </div>
 
-          {/* Navigation */}
-          <nav className="flex items-center gap-1 bg-slate-50/80 dark:bg-slate-800/50 rounded-lg p-1">
-            {navItems.map(renderNavTab)}
-          </nav>
+          {/* Navigation - Center */}
+          <div className="flex justify-center">
+            <nav className="relative flex items-stretch bg-slate-50/80 dark:bg-slate-800/50 rounded-lg p-1">
+              {/* Sliding indicator */}
+              <div
+                className="absolute top-1 bottom-1 left-1 bg-white dark:bg-slate-700 rounded-md shadow-sm transition-all duration-300 ease-out"
+                style={{
+                  transform: `translateX(${activeIndex >= 0 ? activeIndex * 100 : 0}%)`,
+                  width: `calc((100% - 0.5rem) / ${navItems.length})`,
+                }}
+              />
+              {navItems.map((item, index) => renderNavTab(item, index))}
+            </nav>
+          </div>
 
-          {/* Stats & Controls */}
-          <div className="flex items-center gap-4">
-            {/* Enhanced Stats */}
-            <div className="hidden lg:flex items-center gap-4">
-              <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Drivers:</span>
-                <span className="text-base font-semibold text-slate-900 dark:text-white">{metrics.totalTrucks || "—"}</span>
-              </div>
-              <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Alerts:</span>
-                <span className="text-base font-semibold text-red-600 dark:text-red-400">{metrics.activeAlerts}</span>
-              </div>
-              <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Health:</span>
-                <span className="text-base font-semibold text-green-600 dark:text-green-400">{metrics.fleetHealth}%</span>
-              </div>
-            </div>
-
+          {/* Stats & Controls - Right */}
+          <div className="flex items-center justify-end gap-4">
             {/* Search */}
             <form
               onSubmit={handleSearch}
@@ -241,17 +239,12 @@ export default function AppHeader() {
                   if (searchFeedback) setSearchFeedback(null);
                 }}
                 placeholder="Search..."
-                className="w-32 bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-24 bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
               />
             </form>
 
             {/* Theme Toggle */}
             <DarkModeToggle />
-
-            {/* User */}
-            <div className="hidden md:flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg">
-              <span className="text-xs font-medium">AL</span>
-            </div>
           </div>
         </div>
 

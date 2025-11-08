@@ -53,39 +53,96 @@ export default function LongTerm() {
     }));
   }, [data]);
 
+  const cardClass =
+    "rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur flex flex-col";
+  const cardHeaderClass =
+    "flex items-center justify-between px-5 py-4 border-b border-gray-100/60 dark:border-gray-800";
+  const cardBodyClass = "flex-1 px-5 py-4";
+
   return (
-    <div className="page" style={{ marginTop: "var(--app-header-height, 96px)" }}>
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <Link to={`/truck/${truckId}`} className="text-blue-600 underline">← Back to Truck</Link>
-        <div className="font-semibold">Long-term Analytics</div>
-        <div className="text-sm text-gray-600">Truck: {truckId}</div>
+    <div
+      className="page pt-0 pb-10 space-y-6"
+      style={{ marginTop: "var(--app-header-height, 96px)" }}
+    >
+      {/* Header matching SpecificTruck style */}
+      <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur px-6 py-5">
+        <div className="flex flex-wrap items-center gap-5 justify-between">
+          <Link
+            to={`/truck/${truckId}`}
+            className="flex items-center gap-3 text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-200 transition-colors"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/40">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </span>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Back to driver</div>
+              <div className="text-base font-semibold">Live View</div>
+            </div>
+          </Link>
+          <div className="flex-1 min-w-[200px] text-center">
+            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Truck ID</div>
+            <div className="text-2xl font-semibold text-gray-900 dark:text-white">{truckId}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">Long-term Analytics</div>
+          </div>
+        </div>
+
+        {/* Date Range Filters */}
+        <div className="mt-5 pt-5 border-t border-gray-100/60 dark:border-gray-800">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">From Date</span>
+                <input
+                  type="date"
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+              </label>
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">To Date</span>
+                <input
+                  type="date"
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
+              <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
+                {Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24))} days
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="text-sm">
-          <div className="text-gray-600 mb-1">From</div>
-          <input
-            type="date"
-            className="border rounded px-2 py-1"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </label>
-        <label className="text-sm">
-          <div className="text-gray-600 mb-1">To</div>
-          <input
-            type="date"
-            className="border rounded px-2 py-1"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </label>
-      </div>
-
-      {loading && <div className="text-gray-600">Loading analytics…</div>}
-      {err && <div className="text-red-600">{err}</div>}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600 mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400 font-medium">Loading analytics data...</p>
+          </div>
+        </div>
+      )}
+      {err && (
+        <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-6">
+          <div className="flex items-center gap-3">
+            <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-red-800 dark:text-red-200 font-medium">{err}</p>
+          </div>
+        </div>
+      )}
       {!loading && !err && data && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Card 1: Time-to-threshold by trip (grouped bars) */}

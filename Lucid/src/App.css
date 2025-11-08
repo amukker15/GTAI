@@ -5,11 +5,11 @@
 
 /* Card Components */
 .card {
-  @apply bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden;
+  @apply bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden;
 }
 
 .card-h {
-  @apply px-6 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100;
+  @apply px-6 py-4 bg-gradient-to-r from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 border-b border-gray-100 dark:border-gray-600;
 }
 
 .card-b {
