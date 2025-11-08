@@ -1,10 +1,10 @@
-# Lucid Fleet Vigilance Platform
+# Lucid Fleet Platform
 
 ## Problem Statement
-Modern fleets struggle to detect driver fatigue before it becomes dangerous.  Hours of dashcam footage, biometric signals, and telemetry data stay siloed, making it hard for safety teams to spot warning patterns or intervene in time.  We need an end‑to‑end workflow that can (1) convert raw in‑cab video into actionable vigilance metrics, (2) surface those insights to dispatchers in seconds, and (3) keep the entire history queryable for analytics teams inside Snowflake.
+Thousands of freight trucking accidents occur every single year due to drowsiness, caused by factors such as truckers being overworked. Thought ELD mandates (which document total hours driven) have made some progress, truckers still struggle on long hauls.  
 
 ## Our Solution
-Lucid ingests the 30 seconds leading up to any timestamp in a driver video, runs a MediaPipe‑powered computer-vision pipeline to estimate PERCLOS, head pose, yawns, and nods, and classifies the driver’s current state (Lucid, Drowsy, Asleep).  Each window’s metrics and the derived state feed a Snowflake lakehouse where fleet ops can query and trend the data.  A React dashboard streams the most recent five vigilance variables for every truck (perclos, head down degrees, yawns/30s, heart rate, HRV), highlights risk levels, and links to long‑term analytics pulled from Snowflake.  Dispatchers can click any truck or fallback route marker to open that driver’s full detail view, tweak thresholds, and review alert history.
+Lucid repeatedly takes the 30 seconds leading up to any timestamp in a driver video and runs a MediaPipe‑powered computer-vision pipeline to estimate PERCLOS(Percentage of Closure Of the Pupil over Seconds), head pose, yawns, heart rate, and heart rate variablity, and classifies the driver’s current state (Lucid, Drowsy, Asleep).  Each window’s metrics and the derived state feed a Snowflake lakehouse where fleet ops can query and trend the data.  A React dashboard streams the most recent five vigilance variables for every truck (PERCLOS, Head Down Degrees, Yawns/30s, Heart rate, HRV), highlights risk levels, and links to long‑term analytics pulled from Snowflake.  Companies can click any truck or fallback route marker to open that driver’s full detail view, tweak thresholds, and review alert history.
 
 ## AI + CV Stack
 - **MediaPipe Face Mesh & Pose** for landmark extraction.
