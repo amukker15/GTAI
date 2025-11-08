@@ -24,6 +24,8 @@ export default function AppHeader() {
   const trucks = useStore((s) => s.trucks);
   const alerts = useStore((s) => s.alerts);
   const telemetryByTruckId = useStore((s) => s.telemetryByTruckId);
+  const resetGlobalTimer = useStore((s) => s.resetGlobalTimer);
+  const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
   const firstTruckId = trucks[0]?.id ?? null;
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
 
@@ -48,9 +50,9 @@ export default function AppHeader() {
       }
     });
 
-    const lastUpdated = latest
-      ? new Date(latest).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : "Awaiting data";
+    const lastUpdated = secondsSinceLastApiCall === 0 
+      ? "Just updated"
+      : `${secondsSinceLastApiCall}s ago`;
 
     return {
       totalTrucks,
@@ -165,6 +167,19 @@ export default function AppHeader() {
     return () => window.removeEventListener("resize", updateIndicator);
   }, [activeIndex]);
 
+  const handleLogoClick = async () => {
+    try {
+      console.log("[AppHeader] Logo clicked - resetting global timer and clearing Snowflake data");
+      await resetGlobalTimer();
+      // Navigate to home if not already there
+      if (pathname !== "/") {
+        navigate("/");
+      }
+    } catch (error) {
+      console.error("[AppHeader] Failed to reset session:", error);
+    }
+  };
+
   const renderNavTab = (item: NavItem, index: number) => {
     const isActive = item.match(pathname);
     const baseClasses = `relative flex items-center justify-center gap-2 flex-1 px-4 py-2.5 transition-colors duration-200 ${
@@ -214,11 +229,17 @@ export default function AppHeader() {
         <div className="flex items-center justify-between gap-6">
           {/* Brand Section - Left */}
           <div className="flex items-center">
-            <img 
-              src="/media/logo.png" 
-              alt="Lucid" 
-              className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(40,40,40))_drop-shadow(-1px_0_0_rgb(51,51,51))_drop-shadow(0_1px_0_rgb(51,51,51))_drop-shadow(0_-1px_0_rgb(51,51,51))_drop-shadow(1px_1px_0_rgb(51,51,51))_drop-shadow(-1px_-1px_0_rgb(51,51,51))_drop-shadow(1px_-1px_0_rgb(51,51,51))_drop-shadow(-1px_1px_0_rgb(51,51,51))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
-            />
+            <button 
+              onClick={handleLogoClick}
+              className="focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-transform hover:scale-105"
+              title="Click to reset demo session"
+            >
+              <img 
+                src="/media/logo.png" 
+                alt="Lucid" 
+                className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(40,40,40))_drop-shadow(-1px_0_0_rgb(51,51,51))_drop-shadow(0_1px_0_rgb(51,51,51))_drop-shadow(0_-1px_0_rgb(51,51,51))_drop-shadow(1px_1px_0_rgb(51,51,51))_drop-shadow(-1px_-1px_0_rgb(51,51,51))_drop-shadow(1px_-1px_0_rgb(51,51,51))_drop-shadow(-1px_1px_0_rgb(51,51,51))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
+              />
+            </button>
           </div>
 
           {/* Navigation - Center */}

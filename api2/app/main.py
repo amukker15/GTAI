@@ -26,6 +26,7 @@ from .utils import parse_timestamp
 from .state_classifier import DriverStateClassifier
 from .state_store import GLOBAL_STATE_STORE
 from .sim_vitals import VitalsSimulator
+from . import snowflake_db
 
 app = FastAPI(
     title="Lucid Drowsiness API",
@@ -45,6 +46,45 @@ state_classifier = DriverStateClassifier()
 vitals_simulator = VitalsSimulator()
 
 
+def save_analysis_to_snowflake(summary, session_id: str | None, driver_id: str | None):
+    """Save analysis results to Snowflake database"""
+    try:
+        # Create measurement data for Snowflake
+        measurement_data = {
+            "driver_id": driver_id or session_id or "demo_driver",
+            "session_id": session_id or "demo_session", 
+            "ts": summary.ts_end_iso,
+            "perclos": summary.perclos_ratio,
+            "perclos_percent": summary.perclos_percent,
+            "ear_threshold": summary.ear_threshold,
+            "pitchdown_avg": summary.pitchdown_avg,
+            "pitchdown_max": summary.pitchdown_max,
+            "droop_time": summary.droop_time,
+            "droop_duty": summary.droop_duty,
+            "pitch_threshold": summary.pitch_threshold,
+            "yawn_count": summary.yawn_count,
+            "yawn_time": summary.yawn_time,
+            "yawn_duty": summary.yawn_duty,
+            "yawn_peak": summary.yawn_peak,
+            "confidence": summary.confidence_label,
+            "fps": summary.fps_observed
+        }
+        
+        # Insert into Snowflake
+        rows_affected = snowflake_db.insert_drowsiness_measurement(measurement_data)
+        print(f"[Snowflake] Successfully saved analysis data for session {measurement_data['session_id']}")
+        return True
+    except Exception as e:
+        # Reduce noise in demo mode - Snowflake connection issues are expected
+        if "404 Not Found" in str(e) or "login-request" in str(e):
+            # Snowflake connection issue - expected in demo mode
+            pass
+        else:
+            print(f"[Snowflake] Unexpected error saving analysis: {e}")
+        # Don't fail the whole request if Snowflake is down
+        return False
+
+
 async def write_temp_file(upload: UploadFile) -> Path:
     suffix = Path(upload.filename or "window.mp4").suffix or ".mp4"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -59,7 +99,7 @@ async def write_temp_file(upload: UploadFile) -> Path:
 
 
 async def analyze_request(
-    video: UploadFile,
+    video: UploadFile | None,
     timestamp_value: str,
     session_id: str | None,
     driver_id: str | None,
@@ -69,28 +109,50 @@ async def analyze_request(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    tmp_path = await write_temp_file(video)
-    try:
-        summary = await run_in_threadpool(
-            analyzer.analyze,
-            tmp_path,
-            ts_seconds,
-            session_id,
-            driver_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
+    # If no video uploaded, use the auto-detected video file from footage directory
+    if video is None:
+        video_path = find_video_file()
+        if not video_path:
+            raise HTTPException(
+                status_code=404, 
+                detail="No video file found in footage directory and no video uploaded"
+            )
+        
         try:
-            os.unlink(tmp_path)
-        except FileNotFoundError:
-            pass
-    return summary
+            summary = await run_in_threadpool(
+                analyzer.analyze,
+                video_path,
+                ts_seconds,
+                session_id,
+                driver_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return summary
+    else:
+        # Original logic for uploaded video
+        tmp_path = await write_temp_file(video)
+        try:
+            summary = await run_in_threadpool(
+                analyzer.analyze,
+                tmp_path,
+                ts_seconds,
+                session_id,
+                driver_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+        return summary
 
 
 @app.post("/api/perclos", response_model=PerclosResponse)
 async def perclos_endpoint(
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
     timestamp: str = Form(..., description="Timestamp within the video (s or HH:MM:SS)"),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
@@ -108,7 +170,7 @@ async def perclos_endpoint(
 
 @app.post("/api/head-pose", response_model=HeadPoseResponse)
 async def head_pose_endpoint(
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
@@ -128,7 +190,7 @@ async def head_pose_endpoint(
 
 @app.post("/api/yawning", response_model=YawnResponse)
 async def yawning_endpoint(
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
@@ -147,7 +209,7 @@ async def yawning_endpoint(
 
 @app.post("/api/quality", response_model=QualityResponse)
 async def quality_endpoint(
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
@@ -164,12 +226,16 @@ async def quality_endpoint(
 
 @app.post("/api/window", response_model=WindowAggregateResponse)
 async def aggregate_endpoint(
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
 ):
     summary = await analyze_request(video, timestamp, session_id, driver_id)
+    
+    # Save to Snowflake database
+    save_analysis_to_snowflake(summary, session_id, driver_id)
+    
     return WindowAggregateResponse(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
@@ -211,4 +277,141 @@ async def simulate_hrv(payload: VitalsSimRequest):
 @app.post("/v1/sim/vitals", response_model=VitalsSimResponse)
 async def simulate_vitals(payload: VitalsSimRequest):
     return vitals_simulator.simulate_vitals(payload)
+
+
+def find_video_file():
+    """Find the first video file in the footage directory"""
+    footage_dir = Path(__file__).parent.parent / "footage"
+    
+    # Common video file extensions
+    video_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v']
+    
+    if not footage_dir.exists():
+        return None
+        
+    for video_file in footage_dir.iterdir():
+        if video_file.is_file() and video_file.suffix.lower() in video_extensions:
+            return video_file
+    
+    return None
+
+@app.get("/api/footage/video")
+async def serve_demo_video():
+    """Serve the demo video file for frontend consumption"""
+    from fastapi.responses import FileResponse
+    from fastapi import Response
+    
+    footage_path = find_video_file()
+    
+    if not footage_path or not footage_path.exists():
+        raise HTTPException(
+            status_code=404, 
+            detail="No video file found in footage directory. Please add a video file (mp4, mov, avi, etc.)"
+        )
+    
+    # Determine appropriate MIME type based on file extension
+    mime_types = {
+        '.mp4': 'video/mp4',
+        '.mov': 'video/quicktime', 
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        '.wmv': 'video/x-ms-wmv',
+        '.flv': 'video/x-flv',
+        '.webm': 'video/webm',
+        '.m4v': 'video/mp4'
+    }
+    
+    media_type = mime_types.get(footage_path.suffix.lower(), 'video/mp4')
+    
+    response = FileResponse(
+        path=footage_path,
+        media_type=media_type,
+        filename=f"demo_video{footage_path.suffix}"
+    )
+    
+    # Add CORS headers explicitly for this endpoint
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
+
+
+@app.get("/api/footage/info")
+async def get_video_info():
+    """Get metadata about the current video file"""
+    footage_path = find_video_file()
+    
+    if not footage_path:
+        raise HTTPException(
+            status_code=404, 
+            detail="No video file found in footage directory"
+        )
+    
+    # Import video metadata extraction
+    from .video import VideoWindowExtractor
+    
+    try:
+        extractor = VideoWindowExtractor(footage_path)
+        return {
+            "filename": footage_path.name,
+            "duration": extractor.meta.duration,
+            "fps": extractor.meta.fps,
+            "width": extractor.meta.width,
+            "height": extractor.meta.height,
+            "format": footage_path.suffix.lower()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to extract video metadata: {str(e)}"
+        )
+
+
+@app.post("/api/session/reset")
+async def reset_session(session_id: str | None = Form(None)):
+    """Reset session by clearing Snowflake data for demo purposes"""
+    try:
+        # Clear drowsiness measurements for this session
+        if session_id:
+            query = "DELETE FROM DROWSINESS_MEASUREMENTS WHERE session_id = %s"
+            rows_affected = snowflake_db.execute(query, (session_id,))
+        else:
+            # Clear all demo data if no session specified
+            query = "DELETE FROM DROWSINESS_MEASUREMENTS WHERE driver_id = %s OR session_id = %s"
+            rows_affected = snowflake_db.execute(query, ("demo_driver", "demo_session"))
+        
+        return {"success": True, "rows_cleared": rows_affected}
+    except Exception as e:
+        # Reduce noise for expected Snowflake connection issues in demo mode
+        if "404 Not Found" not in str(e) and "login-request" not in str(e):
+            print(f"[Snowflake] Unexpected error resetting session: {e}")
+        # Return success even if Snowflake fails, for demo purposes
+        return {"success": True, "rows_cleared": 0, "warning": "Demo mode - Snowflake not connected"}
+
+
+@app.get("/api/measurements")
+async def get_measurements(
+    session_id: str | None = None,
+    driver_id: str | None = None,
+    limit: int = 100
+):
+    """Get recent drowsiness measurements from Snowflake"""
+    try:
+        if session_id:
+            query = "SELECT * FROM DROWSINESS_MEASUREMENTS WHERE session_id = %s ORDER BY ts DESC LIMIT %s"
+            results = snowflake_db.fetchall(query, (session_id, limit))
+        elif driver_id:
+            query = "SELECT * FROM DROWSINESS_MEASUREMENTS WHERE driver_id = %s ORDER BY ts DESC LIMIT %s"
+            results = snowflake_db.fetchall(query, (driver_id, limit))
+        else:
+            query = "SELECT * FROM DROWSINESS_MEASUREMENTS ORDER BY ts DESC LIMIT %s"
+            results = snowflake_db.fetchall(query, (limit,))
+        
+        return {"measurements": results}
+    except Exception as e:
+        print(f"[Snowflake] Failed to fetch measurements: {e}")
+        return {"measurements": []}
+
+
 """FastAPI entrypoint wiring request handlers to analyzers and simulators."""

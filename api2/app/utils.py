@@ -91,15 +91,29 @@ def probe_creation_time(path: Union[str, Path]) -> datetime | None:
 
 
 def window_bounds(duration: float | None, ts_end: float, window_seconds: float) -> tuple[float, float]:
+    print(f"[WindowBounds] Processing timestamp {ts_end}s, duration={duration}s, window={window_seconds}s")
+    
     if duration and duration > 0 and ts_end > duration:
+        print(f"[WindowBounds] ERROR: timestamp {ts_end}s exceeds video duration {duration}s")
         raise ValueError(
             f"timestamp {ts_end:.2f}s exceeds video duration {duration:.2f}s"
         )
+    
     start = ts_end - window_seconds
+    print(f"[WindowBounds] Calculated start={start}s, end={ts_end}s")
+    
     if start < 0:
-        raise ValueError(
-            "requested timestamp does not have a full 30-second history in the recording"
-        )
+        # For demo purposes, when we don't have enough history, start from beginning
+        # This handles the video loop case where timestamps < 30s are requested
+        print(f"[WindowBounds] Adjusting window for timestamp {ts_end}s: using 0s-{ts_end}s instead of {start}s-{ts_end}s")
+        start = 0.0
+        # If the available window is too short, extend to minimum viable window
+        if ts_end < 5.0:  # Need at least 5 seconds for meaningful analysis
+            old_ts_end = ts_end
+            ts_end = min(5.0, duration or 5.0)
+            print(f"[WindowBounds] Extended short window: {old_ts_end}s -> {ts_end}s")
+    
+    print(f"[WindowBounds] Final window: {start}s to {ts_end}s")
     return start, ts_end
 
 

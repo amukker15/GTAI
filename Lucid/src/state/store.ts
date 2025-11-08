@@ -4,26 +4,81 @@ import { getAlerts, getTelemetry, getThresholds, saveThresholds, getTrucks } fro
 
 type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
 
+export type AnalysisResult = {
+  ts_end: string;
+  session_id: string;
+  driver_id: string;
+  PERCLOS: number;
+  perclos_30s: number;
+  ear_thresh_T: number;
+  pitchdown_avg_30s: number;
+  pitchdown_max_30s: number;
+  droop_time_30s: number;
+  droop_duty_30s: number;
+  pitch_thresh_Tp: number;
+  yawn_count_30s: number;
+  yawn_time_30s: number;
+  yawn_duty_30s: number;
+  yawn_peak_30s: number;
+  confidence: string;
+  fps: number;
+};
+
+type GlobalTimingData = {
+  appStartTime: number;
+  globalElapsedTime: number;
+  lastApiCallTime: number;
+  secondsSinceLastApiCall: number;
+  analysisResults: AnalysisResult[];
+  currentSessionId: string;
+  isAnalysisRunning: boolean;
+  videoDuration: number | null;
+};
+
 type Store = {
   trucks: Truck[];
   telemetryByTruckId: Record<string, Telemetry[]>;
   alerts: Alert[];
   thresholds: Thresholds | null;
   selectedVar: VarKey;
+  appStartTime: number;
+  globalElapsedTime: number;
+  lastApiCallTime: number;
+  secondsSinceLastApiCall: number;
+  analysisResults: AnalysisResult[];
+  currentSessionId: string;
+  isAnalysisRunning: boolean;
+  videoDuration: number | null;
   fetchTrucks: () => Promise<void>;
   pollTelemetry: () => () => void;
   pollAlerts: () => () => void;
   loadThresholds: () => Promise<void>;
   saveThresholds: (t: Thresholds) => Promise<void>;
   setSelectedVar: (v: VarKey) => void;
+  startGlobalTimer: () => void;
+  stopGlobalTimer: () => void;
+  resetGlobalTimer: () => Promise<void>;
+  performVideoAnalysis: () => Promise<void>;
+  updateElapsedTime: (elapsed: number) => void;
+  fetchVideoInfo: () => Promise<void>;
 };
 
-export const useStore = create<Store>((set) => ({
+let globalTimerInterval: number | null = null;
+
+export const useStore = create<Store>((set, get) => ({
   trucks: [],
   telemetryByTruckId: {},
   alerts: [],
   thresholds: null,
   selectedVar: "perclos",
+  appStartTime: Date.now(),
+  globalElapsedTime: 0,
+  lastApiCallTime: 0,
+  secondsSinceLastApiCall: 0,
+  analysisResults: [],
+  currentSessionId: `session_${Date.now()}`,
+  isAnalysisRunning: false,
+  videoDuration: null,
 
   fetchTrucks: async () => {
     const t = await getTrucks();
@@ -73,4 +128,154 @@ export const useStore = create<Store>((set) => ({
   },
 
   setSelectedVar: (v) => set({ selectedVar: v }),
+
+  startGlobalTimer: () => {
+    const startTime = Date.now();
+    set({ appStartTime: startTime, isAnalysisRunning: true });
+    
+    // Update elapsed time every second
+    globalTimerInterval = window.setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - get().appStartTime) / 1000);
+      const sinceLast = get().lastApiCallTime > 0 ? Math.floor((now - get().lastApiCallTime) / 1000) : elapsed;
+      
+      set({ 
+        globalElapsedTime: elapsed,
+        secondsSinceLastApiCall: sinceLast
+      });
+      
+      // Trigger API call every 30 seconds
+      if (elapsed > 0 && elapsed % 30 === 0) {
+        get().performVideoAnalysis();
+      }
+    }, 1000);
+  },
+
+  stopGlobalTimer: () => {
+    if (globalTimerInterval) {
+      clearInterval(globalTimerInterval);
+      globalTimerInterval = null;
+    }
+    set({ isAnalysisRunning: false });
+  },
+
+  resetGlobalTimer: async () => {
+    // Stop current timer
+    get().stopGlobalTimer();
+    
+    // Clear Snowflake data
+    try {
+      const formData = new FormData();
+      formData.append("session_id", get().currentSessionId);
+      
+      const response = await fetch("http://localhost:8000/api/session/reset", {
+        method: "POST",
+        mode: "cors",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        console.warn("Failed to reset Snowflake session");
+      }
+    } catch (error) {
+      console.warn("Error resetting Snowflake session:", error);
+    }
+    
+    // Reset all timing data
+    const newStartTime = Date.now();
+    const newSessionId = `session_${newStartTime}`;
+    
+    set({
+      appStartTime: newStartTime,
+      globalElapsedTime: 0,
+      lastApiCallTime: 0,
+      secondsSinceLastApiCall: 0,
+      analysisResults: [],
+      currentSessionId: newSessionId,
+      isAnalysisRunning: false
+    });
+    
+    // Start new timer
+    get().startGlobalTimer();
+  },
+
+  updateElapsedTime: (elapsed: number) => {
+    set({ globalElapsedTime: elapsed });
+  },
+
+  performVideoAnalysis: async () => {
+    try {
+      const state = get();
+      const currentTime = state.globalElapsedTime;
+      const sessionId = state.currentSessionId;
+      
+      // Prevent multiple simultaneous analysis calls
+      if (state.isAnalysisRunning) {
+        console.log(`[VideoAnalysis] Skipping analysis at ${currentTime}s - analysis already running`);
+        return;
+      }
+      
+      // Set analysis running flag
+      set({ isAnalysisRunning: true });
+      
+      // Use dynamic video duration from backend, fallback to 64 seconds
+      const VIDEO_DURATION = state.videoDuration || 64;
+      const videoTimestamp = currentTime % VIDEO_DURATION;
+      
+      console.log(`[VideoAnalysis] Performing analysis at ${currentTime}s (video time: ${videoTimestamp}s)`);
+      
+      // Create form data for analysis (no need to upload video - backend will use footage directory)
+      const formData = new FormData();
+      formData.append("timestamp", videoTimestamp.toString());
+      formData.append("session_id", sessionId);
+      formData.append("driver_id", "demo_driver");
+      
+      // Submit for analysis
+      const analysisResponse = await fetch("http://localhost:8000/api/window", {
+        method: "POST",
+        mode: "cors",
+        body: formData,
+      });
+      
+      if (!analysisResponse.ok) {
+        const errorText = await analysisResponse.text();
+        throw new Error(`Analysis failed: ${analysisResponse.statusText} - ${errorText}`);
+      }
+      
+      const result: AnalysisResult = await analysisResponse.json();
+      console.log(`[VideoAnalysis] Analysis complete for ${currentTime}s (video: ${videoTimestamp}s):`, result);
+      
+      // Update store with new result
+      set((state) => ({
+        analysisResults: [...state.analysisResults, result],
+        lastApiCallTime: Date.now(),
+        secondsSinceLastApiCall: 0,
+        isAnalysisRunning: false
+      }));
+      
+    } catch (error) {
+      console.error(`[VideoAnalysis] Analysis failed:`, error);
+      // Make sure to clear the running flag even on error
+      set({ isAnalysisRunning: false });
+    }
+  },
+
+  fetchVideoInfo: async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/footage/info", {
+        method: "GET",
+        mode: "cors",
+      });
+      
+      if (response.ok) {
+        const videoInfo = await response.json();
+        console.log(`[VideoInfo] Detected video: ${videoInfo.filename} (${videoInfo.duration}s, ${videoInfo.format})`);
+        set({ videoDuration: videoInfo.duration });
+      } else {
+        console.warn("[VideoInfo] Failed to fetch video info, using default duration");
+      }
+    } catch (error) {
+      console.warn("[VideoInfo] Failed to fetch video info:", error);
+    }
+  },
 }));

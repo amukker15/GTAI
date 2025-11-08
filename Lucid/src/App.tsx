@@ -13,15 +13,24 @@ export default function App() {
   const loadThresholds = useStore((s) => s.loadThresholds);
   const startTelemetry = useStore((s) => s.pollTelemetry);
   const startAlerts = useStore((s) => s.pollAlerts);
+  const startGlobalTimer = useStore((s) => s.startGlobalTimer);
+  const stopGlobalTimer = useStore((s) => s.stopGlobalTimer);
+  const fetchVideoInfo = useStore((s) => s.fetchVideoInfo);
 
   useEffect(() => {
     fetchTrucks();
     loadThresholds();
+    fetchVideoInfo(); // Auto-detect video file in footage directory
     const stopT = startTelemetry();
     const stopA = startAlerts();
+    
+    // Start global timer for video analysis
+    startGlobalTimer();
+    
     return () => {
       stopT?.();
       stopA?.();
+      stopGlobalTimer();
     };
   }, []);
 

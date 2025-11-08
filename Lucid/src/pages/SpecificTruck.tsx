@@ -20,6 +20,7 @@ import type { DriverStatus } from "../lib/status";
 import type { Telemetry, Thresholds, Truck } from "../lib/types";
 import { useDarkMode } from "../context/DarkModeContext";
 import { AlertCircle, AlertTriangle, Home, Radar, Timeline } from "../components/icons";
+import VideoPlayer from "../components/VideoPlayer";
 
 type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
 
@@ -79,7 +80,12 @@ export default function TruckDetail() {
   const thresholds = useStore((s) => s.thresholds) as Thresholds | null;
   const selectedVar = useStore((s) => s.selectedVar);
   const setSelectedVar = useStore((s) => s.setSelectedVar);
+  const analysisResults = useStore((s) => s.analysisResults);
+  const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
   const { darkMode } = useDarkMode();
+
+  // Get latest analysis result for current data display
+  const latestAnalysis = analysisResults[analysisResults.length - 1];
 
   // Local UI state
 
@@ -97,18 +103,26 @@ export default function TruckDetail() {
   }, [latest]);
   const mapKey = latest ? `${truckId}-${latest.timestamp}` : "no-data";
 
-  // Build chart data
+  // Build chart data from analysis results
   const chartData = useMemo(
     () =>
-      history.map((h) => ({
-        time: new Date(h.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        perclos: Number(h.perclos.toFixed(3)),
-        headDownDegrees: h.headDownDegrees,
-        yawnCount30s: h.yawnCount30s,
-        heartRate: h.heartRate,
-        hrvRmssd: h.hrvRmssd,
-      })),
-    [history]
+      analysisResults.map((result) => {
+        // Simulate heart rate and HRV based on analysis data
+        const baseHeartRate = 72;
+        const baseHRV = 45;
+        const heartRate = Math.round(baseHeartRate + (result.perclos_30s * 20)); // Higher PERCLOS = higher HR
+        const hrvRmssd = Math.round(baseHRV - (result.perclos_30s * 15)); // Higher PERCLOS = lower HRV
+        
+        return {
+          time: new Date(result.ts_end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          perclos: Number((result.perclos_30s).toFixed(3)),
+          headDownDegrees: result.pitchdown_avg_30s,
+          yawnCount30s: result.yawn_count_30s,
+          heartRate: heartRate,
+          hrvRmssd: hrvRmssd,
+        };
+      }),
+    [analysisResults]
   );
 
   // Color route segments by status (compute with small rolling window)
@@ -131,11 +145,38 @@ export default function TruckDetail() {
     return segs;
   }, [history, thresholds]);
 
-  // Filter alerts for this truck
-  const truckAlerts = useMemo(
-    () => allAlerts.filter((a) => a.truckId === truckId),
-    [allAlerts, truckId]
-  );
+  // Generate alerts based on analysis results
+  const truckAlerts = useMemo(() => {
+    return analysisResults
+      .map((result, index) => {
+        const isDrowsy = result.perclos_30s > 0.4 || result.yawn_count_30s > 2;
+        const isAsleep = result.perclos_30s > 0.6 || result.confidence !== "OK";
+        
+        if (isAsleep) {
+          return {
+            id: `alert_${index}`,
+            truckId: truckId || "demo_truck",
+            status: "ASLEEP",
+            reason: `High fatigue detected (PERCLOS: ${(result.perclos_30s * 100).toFixed(1)}%)`,
+            startedAt: result.ts_end,
+            secondsDrowsy: 30,
+            timeInterval: `${Math.floor(index * 30 / 60)}:${String(index * 30 % 60).padStart(2, '0')}-${Math.floor((index + 1) * 30 / 60)}:${String((index + 1) * 30 % 60).padStart(2, '0')}`
+          };
+        } else if (isDrowsy) {
+          return {
+            id: `alert_${index}`,
+            truckId: truckId || "demo_truck", 
+            status: "DROWSY_SOON",
+            reason: `Drowsiness indicators (PERCLOS: ${(result.perclos_30s * 100).toFixed(1)}%, Yawns: ${result.yawn_count_30s})`,
+            startedAt: result.ts_end,
+            secondsDrowsy: 30,
+            timeInterval: `${Math.floor(index * 30 / 60)}:${String(index * 30 % 60).padStart(2, '0')}-${Math.floor((index + 1) * 30 / 60)}:${String((index + 1) * 30 % 60).padStart(2, '0')}`
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [analysisResults, truckId]);
 
   // Status text
   const statusText = useMemo<DriverStatus>(() => {
@@ -147,18 +188,28 @@ export default function TruckDetail() {
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 
-  const driverName = truck?.driverName ?? "Unknown driver";
-  const routeLabel = truck ? `${truck.route.from} → ${truck.route.to}` : "Route unavailable";
+  const driverName = truck?.driverName ?? "Demo Driver";
+  const routeLabel = truck ? `${truck.route.from} → ${truck.route.to}` : "Demo Route";
   const companyLabel = truck?.company ?? "—";
-  const lastUpdateText = latest
-    ? new Date(latest.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : "Awaiting signal";
+  const lastUpdateText = secondsSinceLastApiCall === 0 
+    ? "Just updated"
+    : `${secondsSinceLastApiCall}s ago`;
 
-  const perclosPercent = latest ? Math.round(latest.perclos * 100) : null;
-  const headDownDegrees = latest?.headDownDegrees ?? null;
-  const yawnCount = latest?.yawnCount30s ?? null;
-  const heartRate = latest?.heartRate ?? null;
-  const hrvRmssd = latest?.hrvRmssd ?? null;
+  // Use latest analysis results instead of mock telemetry
+  const perclosPercent = latestAnalysis ? Math.round(latestAnalysis.perclos_30s * 100) : null;
+  const headDownDegrees = latestAnalysis?.pitchdown_avg_30s ?? null;
+  const yawnCount = latestAnalysis?.yawn_count_30s ?? null;
+  
+  // Simulate heart rate and HRV based on analysis data
+  const baseHeartRate = 72;
+  const heartRate = latestAnalysis 
+    ? Math.round(baseHeartRate + (latestAnalysis.perclos_30s * 20)) // Higher PERCLOS = higher HR
+    : null;
+  
+  const baseHRV = 45;
+  const hrvRmssd = latestAnalysis 
+    ? Math.round(baseHRV - (latestAnalysis.perclos_30s * 15)) // Higher PERCLOS = lower HRV
+    : null;
 
   const biometrics = [
     {
@@ -198,7 +249,8 @@ export default function TruckDetail() {
   const gridColor = darkMode ? "rgba(148,163,184,0.35)" : "rgba(15,23,42,0.08)";
   const lineColor = darkMode ? "#38bdf8" : "#2563eb";
 
-  const selectedValue = latest ? latest[selectedVar] : null;
+  const latestChartData = chartData[chartData.length - 1];
+  const selectedValue = latestChartData ? latestChartData[selectedVar] : null;
   const formattedSelectedValue = useMemo(() => {
     if (selectedValue === null || selectedValue === undefined) return "—";
     if (typeof selectedValue === "number") {
@@ -301,33 +353,30 @@ export default function TruckDetail() {
               </div>
             </section>
 
+            {/* Biometric Chart - Single Chart with Selector */}
             <section className={`${SURFACE_CLASS}`}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-200">
-                    <Timeline className="h-4 w-4" />
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-200">
+                    <LineChart className="h-4 w-4" />
                   </span>
                   <div>
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Signals</p>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Live biometrics</p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Biometric tracking</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{VAR_LABEL[selectedVar]}</p>
                   </div>
                 </div>
-                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Tracking {VAR_LABEL[selectedVar]}
-                </div>
-              </div>
-              <div className="space-y-3 px-4 py-3">
-                <div className="flex flex-wrap gap-1">
-                  {(Object.keys(VAR_LABEL) as VarKey[]).map((key) => {
+                <div className="flex flex-wrap gap-2">
+                  {Object.keys(VAR_LABEL).map((k) => {
+                    const key = k as VarKey;
                     const active = selectedVar === key;
                     return (
                       <button
                         key={key}
                         onClick={() => setSelectedVar(key)}
-                        className={`rounded-lg border px-2 py-1 text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 ${
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                           active
-                            ? "border-slate-900 bg-slate-900 text-white shadow-md shadow-slate-900/25 dark:border-white dark:bg-white dark:text-slate-900"
-                            : "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:bg-white hover:shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                            ? "bg-blue-600 text-white shadow border border-blue-600"
+                            : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
                         }`}
                       >
                         {VAR_LABEL[key]}
@@ -335,37 +384,49 @@ export default function TruckDetail() {
                     );
                   })}
                 </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50/70 px-3 py-2 dark:bg-slate-900/50">
-                  <div className="text-xs text-slate-600 dark:text-slate-300">
-                    Latest: <span className="font-bold text-slate-900 dark:text-white">{formattedSelectedValue}</span>
-                  </div>
-                  {latest && (
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {new Date(latest.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <div className="px-4 py-3">
+                <div className="h-[300px] w-full min-h-[300px] min-w-[400px]">
+                  {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%" minHeight={300} minWidth={400}>
+                      <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="time" 
+                          tick={{ fill: axisColor, fontSize: 12 }}
+                          tickMargin={8}
+                          minTickGap={30}
+                        />
+                        <YAxis 
+                          tick={{ fill: axisColor, fontSize: 12 }}
+                          tickMargin={8}
+                        />
+                        <Tooltip content={<SignalTooltip />} />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey={selectedVar}
+                          stroke={lineColor}
+                          strokeWidth={2}
+                          dot={false}
+                          connectNulls={false}
+                          isAnimationActive={false}
+                        />
+                        <Brush height={24} travellerWidth={10} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-slate-500 dark:text-slate-400">
+                      <div className="text-center">
+                        <div className="animate-pulse">Loading analysis data...</div>
+                        <div className="text-xs mt-1">Waiting for first 30-second analysis</div>
+                      </div>
                     </div>
                   )}
                 </div>
-
-                <div className="h-[240px] rounded-lg border border-slate-100 bg-slate-50/60 p-2 dark:border-slate-800 dark:bg-slate-900/40">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ left: 0, right: 10 }}>
-                      <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-                      <XAxis dataKey="time" tick={{ fill: axisColor }} minTickGap={30} />
-                      <YAxis tick={{ fill: axisColor }} domain={["auto", "auto"]} width={50} />
-                      <Tooltip content={<SignalTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey={selectedVar}
-                        stroke={lineColor}
-                        dot={false}
-                        strokeWidth={2.5}
-                        isAnimationActive={false}
-                      />
-                      <Brush height={26} travellerWidth={10} stroke={lineColor} fill={darkMode ? "#0f172a" : "#e2e8f0"} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Current value: {formattedSelectedValue}
+                </p>
               </div>
             </section>
 
@@ -396,7 +457,7 @@ export default function TruckDetail() {
                 )}
                 {truckAlerts.length > 0 && (
                   <div className="space-y-2">
-                    {truckAlerts.map((a, idx) => {
+                    {truckAlerts.map((a: any, idx: number) => {
                       const isCritical = a.status === "ASLEEP";
                       const tint = statusToColor(a.status as DriverStatus);
                       const Icon = isCritical ? AlertCircle : AlertTriangle;
@@ -417,7 +478,7 @@ export default function TruckDetail() {
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                               <div className="flex items-center gap-2">
                                 <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
-                                  {a.truckId}
+                                  Video {a.timeInterval}
                                 </span>
                                 <span className="text-xs font-semibold text-slate-900 dark:text-white">
                                   {isCritical ? "Critical" : "Warning"}
@@ -428,7 +489,9 @@ export default function TruckDetail() {
                               </span>
                             </div>
                             <p className="text-xs text-slate-700 dark:text-slate-200 mb-1">{a.reason}</p>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{a.secondsDrowsy}s duration</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                              30s interval: {a.timeInterval}
+                            </p>
                           </div>
                         </div>
                       );
@@ -499,16 +562,8 @@ export default function TruckDetail() {
                   </div>
                 </div>
               </div>
-              <div className="relative px-4 py-3">
-                <div className="flex h-[160px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 text-slate-500 dark:border-slate-600 dark:from-slate-900 dark:to-slate-800">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-200 text-slate-400 dark:bg-slate-700 dark:text-slate-500">
-                    <Radar className="h-4 w-4" />
-                  </div>
-                  <h3 className="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Live video feed
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Coming soon</p>
-                </div>
+              <div className="px-4 py-3">
+                <VideoPlayer className="h-[160px] w-full" />
               </div>
             </section>
           </div>

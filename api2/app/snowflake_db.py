@@ -27,8 +27,12 @@ to add connection pooling, retries, or instrumentation later.
 
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 import os
+from dotenv import load_dotenv
 
 import snowflake.connector
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Defaults (safe to override via environment)
 DEFAULT_DB = os.getenv("SNOWFLAKE_DATABASE", "LCD_ENDPOINTS")

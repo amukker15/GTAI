@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useStore } from "../state/store";
 import { computeStatus, statusToColor } from "../lib/status";
 import { Search, CheckCircle, AlertTriangle, AlertCircle } from "../components/icons";
+import VideoPlayer from "../components/VideoPlayer";
 
 export default function DriverSelection() {
   const navigate = useNavigate();
@@ -10,7 +11,12 @@ export default function DriverSelection() {
   const telemetryByTruckId = useStore((state) => state.telemetryByTruckId);
   const alerts = useStore((state) => state.alerts);
   const thresholds = useStore((state) => state.thresholds);
+  const analysisResults = useStore((state) => state.analysisResults);
+  const globalElapsedTime = useStore((state) => state.globalElapsedTime);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Get latest analysis for displaying current status
+  const latestAnalysis = analysisResults[analysisResults.length - 1];
 
   const getTruckStatus = (truckId: string) => {
     if (!thresholds) return "OK";
@@ -206,6 +212,63 @@ export default function DriverSelection() {
             })}
           </div>
         )}
+
+        {/* Video Analysis Section */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+          <div className="text-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Live Analysis Feed</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">Real-time drowsiness detection from driver camera</p>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Video Player */}
+            <div>
+              <VideoPlayer className="h-48 w-full" />
+            </div>
+            
+            {/* Current Analysis Data */}
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {Math.floor(globalElapsedTime / 60)}:{String(globalElapsedTime % 60).padStart(2, '0')}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">Session Time</div>
+              </div>
+              
+              {latestAnalysis && (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="font-semibold text-gray-900 dark:text-white">PERCLOS</div>
+                    <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                      {(latestAnalysis.perclos_30s * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="font-semibold text-gray-900 dark:text-white">Head Down</div>
+                    <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                      {latestAnalysis.pitchdown_avg_30s.toFixed(1)}°
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="font-semibold text-gray-900 dark:text-white">Yawns</div>
+                    <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                      {latestAnalysis.yawn_count_30s}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="font-semibold text-gray-900 dark:text-white">Confidence</div>
+                    <div className={`text-lg font-bold ${latestAnalysis.confidence === "OK" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      {latestAnalysis.confidence}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
