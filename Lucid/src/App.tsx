@@ -1,7 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import AppHeader from "./components/AppHeader";
 import MainScreen from "./pages/MainScreen";
-import TruckDetail from "./pages/TruckDetail";
+import TruckDetail from "./pages/SpecificTruck";
 import LongTerm from "./pages/LongTerm";
 import { useEffect } from "react";
 import { useStore } from "./state/store";

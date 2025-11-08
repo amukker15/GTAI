@@ -106,7 +106,6 @@ export default function TruckDetail() {
       {/* Top bar */}
       <div className="mb-4 flex items-center justify-between">
         <Link to="/" className="text-blue-600 underline">🏠 Home</Link>
-        <div className="font-semibold">Acme Logistics</div>
         <div className="text-sm text-gray-600">Truck: {truckId}</div>
       </div>
 
