@@ -166,8 +166,6 @@ export default function DriverSelection() {
                   onClick={() => navigate(`/truck/${truck.id}`)}
                   className="group relative flex h-full flex-col rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-blue-400 hover:shadow-md hover:-translate-y-0.5 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-500"
                 >
-                  <div className="absolute inset-x-5 top-0 h-1 rounded-b-full" style={{ backgroundColor: statusColor }} />
-                  
                   <div className="flex items-start justify-between gap-3 pt-2">
                     <div className="flex items-start gap-3">
                       <div

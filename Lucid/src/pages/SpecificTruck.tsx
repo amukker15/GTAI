@@ -17,22 +17,63 @@ import {
 } from "recharts";
 import { computeStatus, statusToColor } from "../lib/status";
 import type { DriverStatus } from "../lib/status";
-import type { Telemetry, Thresholds } from "../lib/types";
+import type { Telemetry, Thresholds, Truck } from "../lib/types";
 import { useDarkMode } from "../context/DarkModeContext";
-import { Home } from "../components/icons";
+import { AlertCircle, AlertTriangle, Home, Radar, Timeline } from "../components/icons";
 
 type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
 
 const VAR_LABEL: Record<VarKey, string> = {
   perclos: "PERCLOS",
   headDownDegrees: "Head Down (°)",
-  yawnCount30s: "Yawns/30s",
+  yawnCount30s: "Yawns / 30s",
   heartRate: "Heart Rate (bpm)",
   hrvRmssd: "HRV RMSSD (ms)",
 };
 
+const MAP_LEGEND = [
+  { label: "Lucid", color: statusToColor("OK") },
+  { label: "Warning", color: statusToColor("DROWSY_SOON") },
+  { label: "Critical", color: statusToColor("ASLEEP") },
+];
+
+const SURFACE_CLASS =
+  "relative rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-950/60 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.9)] backdrop-blur";
+
+type ChartTooltipPayload = {
+  value?: number | string;
+  dataKey?: string | number;
+};
+
+type ChartTooltipProps = {
+  active?: boolean;
+  payload?: ChartTooltipPayload[];
+  label?: string | number;
+};
+
+const SignalTooltip = ({ active, payload, label }: ChartTooltipProps) => {
+  if (!active || !payload?.length) return null;
+  const point = payload[0];
+  const numericValue = typeof point.value === "number" ? point.value : Number(point.value);
+  const formattedValue = Number.isFinite(numericValue)
+    ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : point.value ?? "—";
+  const dataKey = (point.dataKey ?? "") as VarKey | string;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
+      <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-base font-semibold text-slate-900 dark:text-white">{formattedValue}</div>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+        {VAR_LABEL[dataKey as VarKey] ?? dataKey}
+      </div>
+    </div>
+  );
+};
+
 export default function TruckDetail() {
   const { truckId = "" } = useParams();
+  const truck = useStore((s) => s.trucks.find((t: Truck) => t.id === truckId));
   const telemetryByTruckId = useStore((s) => s.telemetryByTruckId);
   const allAlerts = useStore((s) => s.alerts);
   const thresholds = useStore((s) => s.thresholds) as Thresholds | null;
@@ -44,8 +85,6 @@ export default function TruckDetail() {
 
   const history: Telemetry[] = telemetryByTruckId[truckId] || [];
   const latest = history[history.length - 1];
-
-  // Fallback center if no data yet (US center)
   const center: LatLngTuple = latest ? [latest.lat, latest.lng] : [39.5, -98.35];
   const focusBounds = useMemo<LatLngBoundsExpression | undefined>(() => {
     if (!latest) return undefined;
@@ -62,7 +101,7 @@ export default function TruckDetail() {
   const chartData = useMemo(
     () =>
       history.map((h) => ({
-        time: new Date(h.timestamp).toLocaleTimeString(),
+        time: new Date(h.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
         perclos: Number(h.perclos.toFixed(3)),
         headDownDegrees: h.headDownDegrees,
         yawnCount30s: h.yawnCount30s,
@@ -76,7 +115,6 @@ export default function TruckDetail() {
   const coloredSegments = useMemo(() => {
     if (!thresholds || history.length < 2) return [];
     const segs: { pts: LatLngTuple[]; color: string; key: string }[] = [];
-    // window of last 3 points for status
     for (let i = 1; i < history.length; i++) {
       const slice = history.slice(Math.max(0, i - 3), i + 1);
       const cur = history[i];
@@ -108,181 +146,371 @@ export default function TruckDetail() {
   const mapTileUrl = darkMode
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-  const cardClass =
-    "rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur flex flex-col";
-  const cardHeaderClass =
-    "flex items-center justify-between px-5 py-4 border-b border-gray-100/60 dark:border-gray-800";
-  const cardBodyClass = "flex-1 px-5 py-4";
 
-  // Handlers
+  const driverName = truck?.driverName ?? "Unknown driver";
+  const routeLabel = truck ? `${truck.route.from} → ${truck.route.to}` : "Route unavailable";
+  const companyLabel = truck?.company ?? "—";
+  const lastUpdateText = latest
+    ? new Date(latest.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "Awaiting signal";
+
+  const perclosPercent = latest ? Math.round(latest.perclos * 100) : null;
+  const headDownDegrees = latest?.headDownDegrees ?? null;
+  const yawnCount = latest?.yawnCount30s ?? null;
+  const heartRate = latest?.heartRate ?? null;
+  const hrvRmssd = latest?.hrvRmssd ?? null;
+
+  const biometrics = [
+    {
+      key: "perclos",
+      label: "Fatigue (PERCLOS)",
+      value: perclosPercent !== null ? `${perclosPercent}%` : "—",
+      helper: "Latest 30s window",
+      progress: perclosPercent,
+    },
+    {
+      key: "heartRate",
+      label: "Heart Rate",
+      value: heartRate !== null ? `${heartRate} bpm` : "—",
+      helper: "Live sensor reading",
+    },
+    {
+      key: "hrvRmssd",
+      label: "HRV RMSSD",
+      value: hrvRmssd !== null ? `${hrvRmssd} ms` : "—",
+      helper: "Short-term variability",
+    },
+    {
+      key: "headDownDegrees",
+      label: "Head Down",
+      value: headDownDegrees !== null ? `${headDownDegrees.toFixed(0)}°` : "—",
+      helper: "Inclination vs forward",
+    },
+    {
+      key: "yawnCount30s",
+      label: "Yawns / 30s",
+      value: yawnCount !== null ? yawnCount.toString() : "—",
+      helper: "Recent interval",
+    },
+  ];
+
+  const axisColor = darkMode ? "#94a3b8" : "#475569";
+  const gridColor = darkMode ? "rgba(148,163,184,0.35)" : "rgba(15,23,42,0.08)";
+  const lineColor = darkMode ? "#38bdf8" : "#2563eb";
+
+  const selectedValue = latest ? latest[selectedVar] : null;
+  const formattedSelectedValue = useMemo(() => {
+    if (selectedValue === null || selectedValue === undefined) return "—";
+    if (typeof selectedValue === "number") {
+      if (selectedVar === "perclos") return `${Math.round(selectedValue * 100)}%`;
+      if (selectedVar === "headDownDegrees") return `${selectedValue.toFixed(0)}°`;
+      if (selectedVar === "yawnCount30s") return selectedValue.toFixed(0);
+      if (selectedVar === "heartRate") return `${selectedValue.toFixed(0)} bpm`;
+      if (selectedVar === "hrvRmssd") return `${selectedValue.toFixed(0)} ms`;
+      return selectedValue.toLocaleString();
+    }
+    return selectedValue;
+  }, [selectedValue, selectedVar]);
 
   return (
     <div
-      className="page pt-0 pb-10 space-y-6"
+      className="relative page px-4 pb-12 pt-4 sm:px-6 lg:px-10"
       style={{ marginTop: "var(--app-header-height, 96px)" }}
     >
-      <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur px-6 py-5 flex flex-wrap items-center gap-5 justify-between">
-        <Link
-          to="/driver-studio"
-          className="flex items-center gap-3 text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-200 transition-colors"
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/40">
-            <Home className="w-5 h-5" />
-          </span>
-          <div>
-            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Back to</div>
-            <div className="text-base font-semibold">Driver Selection</div>
-          </div>
-        </Link>
-        <div className="flex-1 min-w-[200px] text-right">
-          <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Truck ID</div>
-          <div className="text-2xl font-semibold text-gray-900 dark:text-white">{truckId}</div>
-          {latest && (
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              Updated {new Date(latest.timestamp).toLocaleTimeString()}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Current status</span>
-          <span
-            className="px-4 py-2 rounded-full font-semibold text-sm text-white"
-            style={{ backgroundColor: statusColor }}
-          >
-            {statusText}
-          </span>
-        </div>
-      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-96 bg-gradient-to-b from-sky-100 via-transparent to-transparent dark:from-slate-900/70" />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className={`${cardClass} xl:col-span-1 min-h-[360px]`}>
-          <div className={cardHeaderClass}>
-            <span className="font-semibold">Driver Region View</span>
-          </div>
-          <div className={`${cardBodyClass} pt-4`}>
-            <div className="h-[280px] rounded-xl overflow-hidden ring-1 ring-gray-200/60 dark:ring-gray-800">
-              <MapContainer
-                key={mapKey}
-                center={center}
-                bounds={focusBounds}
-                zoom={focusBounds ? undefined : 6}
-                scrollWheelZoom
-                className="h-full w-full"
-              >
-                <TileLayer
-                  url={mapTileUrl}
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                />
-                {coloredSegments.map((seg, idx) => (
-                  <Polyline
-                    key={seg.key + "-" + idx}
-                    positions={seg.pts}
-                    pathOptions={{ color: seg.color, weight: 5, opacity: 0.9 }}
-                  />
-                ))}
-              </MapContainer>
-            </div>
-            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-              View is constrained to ~200 miles around the driver&apos;s latest position.
-            </p>
-          </div>
-        </div>
+      <div className="space-y-3">
+        <section className={`${SURFACE_CLASS} overflow-hidden px-4 py-3`}>
+          <div className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l from-sky-200/40 to-transparent dark:from-sky-500/10" />
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div>
+                <p className="text-xs uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">Driver Studio</p>
+                <h1 className="text-xl font-bold text-slate-900 dark:text-white">{driverName}</h1>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {routeLabel}
+                  </span>
+                </div>
+              </div>
 
-        <div className={`${cardClass} xl:col-span-2 min-h-[420px]`}>
-          <div className={cardHeaderClass}>
-            <span className="font-semibold">Signals</span>
-            <Link
-              to={`/long-term/${truckId}`}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold shadow hover:bg-blue-500 transition-colors"
-            >
-              Long-term data →
-            </Link>
-          </div>
-          <div className={`${cardBodyClass} flex flex-col gap-4`}>
-            <div className="flex flex-wrap gap-2">
-              {Object.keys(VAR_LABEL).map((k) => {
-                const key = k as VarKey;
-                const active = selectedVar === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedVar(key)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      active
-                        ? "bg-blue-600 text-white shadow border border-blue-600"
-                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    {VAR_LABEL[key]}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex-1 min-h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.4)" />
-                  <XAxis dataKey="time" minTickGap={30} />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey={selectedVar}
-                    stroke="#2563eb"
-                    dot={false}
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                  <Brush height={24} travellerWidth={10} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${cardClass} xl:col-span-1 min-h-[320px]`}>
-          <div className={cardHeaderClass}>
-            <span className="font-semibold">Live Driver Feed</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">Secure stream</span>
-          </div>
-          <div className={`${cardBodyClass} flex items-center justify-center`}>
-            <div className="w-full h-[220px] rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
-              Live video feed (coming soon)
-            </div>
-          </div>
-        </div>
-
-        <div className={`${cardClass} xl:col-span-2 h-[360px]`}>
-          <div className={cardHeaderClass}>
-            <span className="font-semibold">Alert History</span>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{truckAlerts.length} events</span>
-          </div>
-          <div className={`${cardBodyClass} overflow-y-auto`}>
-            <div className="space-y-3 pr-1">
-              {truckAlerts.length === 0 && (
-                <div className="text-gray-500 dark:text-gray-400">No alerts for this truck.</div>
-              )}
-              {truckAlerts.map((a) => (
-                <div
-                  key={a.id}
-                  className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col gap-1"
-                  style={{ borderLeftWidth: 4, borderLeftColor: statusToColor(a.status) }}
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Last update</span>
+                <div className="text-sm font-semibold text-slate-900 dark:text-white">{lastUpdateText}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                  style={{ backgroundColor: statusColor }}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{a.status}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                      {new Date(a.startedAt).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">{a.reason}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Drowsy for {a.secondsDrowsy}s
+                  {statusText === "OK" ? "Lucid" : statusText === "DROWSY_SOON" ? "Warning" : statusText === "ASLEEP" ? "Critical" : statusText}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+          <div className="space-y-3">
+            <section className={`${SURFACE_CLASS}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-200">
+                    <Radar className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Route focus</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Regional track</p>
                   </div>
                 </div>
-              ))}
-            </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {MAP_LEGEND.map((item) => (
+                    <span key={item.label} className="flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="px-4 py-3">
+                <div className="h-[260px] overflow-hidden rounded-lg border border-slate-100 shadow-sm dark:border-slate-800">
+                  <MapContainer
+                    key={mapKey}
+                    center={center}
+                    bounds={focusBounds}
+                    zoom={focusBounds ? undefined : 6}
+                    scrollWheelZoom
+                    className="h-full w-full"
+                  >
+                    <TileLayer
+                      url={mapTileUrl}
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    />
+                    {coloredSegments.map((seg, idx) => (
+                      <Polyline
+                        key={`${seg.key}-${idx}`}
+                        positions={seg.pts}
+                        pathOptions={{ color: seg.color, weight: 5, opacity: 0.85 }}
+                      />
+                    ))}
+                  </MapContainer>
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Map auto-centers around driver location (~200mi radius).
+                </p>
+              </div>
+            </section>
+
+            <section className={`${SURFACE_CLASS}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-200">
+                    <Timeline className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Signals</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Live biometrics</p>
+                  </div>
+                </div>
+                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Tracking {VAR_LABEL[selectedVar]}
+                </div>
+              </div>
+              <div className="space-y-3 px-4 py-3">
+                <div className="flex flex-wrap gap-1">
+                  {(Object.keys(VAR_LABEL) as VarKey[]).map((key) => {
+                    const active = selectedVar === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setSelectedVar(key)}
+                        className={`rounded-lg border px-2 py-1 text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 ${
+                          active
+                            ? "border-slate-900 bg-slate-900 text-white shadow-md shadow-slate-900/25 dark:border-white dark:bg-white dark:text-slate-900"
+                            : "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:bg-white hover:shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                        }`}
+                      >
+                        {VAR_LABEL[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50/70 px-3 py-2 dark:bg-slate-900/50">
+                  <div className="text-xs text-slate-600 dark:text-slate-300">
+                    Latest: <span className="font-bold text-slate-900 dark:text-white">{formattedSelectedValue}</span>
+                  </div>
+                  {latest && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {new Date(latest.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-[240px] rounded-lg border border-slate-100 bg-slate-50/60 p-2 dark:border-slate-800 dark:bg-slate-900/40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ left: 0, right: 10 }}>
+                      <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                      <XAxis dataKey="time" tick={{ fill: axisColor }} minTickGap={30} />
+                      <YAxis tick={{ fill: axisColor }} domain={["auto", "auto"]} width={50} />
+                      <Tooltip content={<SignalTooltip />} />
+                      <Line
+                        type="monotone"
+                        dataKey={selectedVar}
+                        stroke={lineColor}
+                        dot={false}
+                        strokeWidth={2.5}
+                        isAnimationActive={false}
+                      />
+                      <Brush height={26} travellerWidth={10} stroke={lineColor} fill={darkMode ? "#0f172a" : "#e2e8f0"} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
+
+            <section className={`${SURFACE_CLASS}`}>
+              <div className="flex items-center justify-between border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-200">
+                    <Timeline className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Alert history</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{truckAlerts.length} events</p>
+                  </div>
+                </div>
+                <span className="rounded-lg bg-rose-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">
+                  Live
+                </span>
+              </div>
+              <div className="max-h-[300px] overflow-y-auto px-4 py-3">
+                {truckAlerts.length === 0 && (
+                  <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center dark:border-slate-700 dark:bg-slate-900/40">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                      <Timeline className="h-4 w-4" />
+                    </div>
+                    <h3 className="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">No alerts recorded</h3>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Driver maintains good alertness.</p>
+                  </div>
+                )}
+                {truckAlerts.length > 0 && (
+                  <div className="space-y-2">
+                    {truckAlerts.map((a, idx) => {
+                      const isCritical = a.status === "ASLEEP";
+                      const tint = statusToColor(a.status as DriverStatus);
+                      const Icon = isCritical ? AlertCircle : AlertTriangle;
+                      return (
+                        <div key={a.id} className="flex gap-3">
+                          <div className="relative flex flex-col items-center">
+                            <span
+                              className="flex h-8 w-8 items-center justify-center rounded-full border-2 bg-white shadow-sm dark:bg-slate-950"
+                              style={{ borderColor: tint, color: tint }}
+                            >
+                              <Icon className="h-3 w-3" />
+                            </span>
+                            {idx !== truckAlerts.length - 1 && (
+                              <div className="mt-1 h-full w-0.5 bg-gradient-to-b from-slate-300 via-slate-200 to-transparent dark:from-slate-600 dark:via-slate-700" />
+                            )}
+                          </div>
+                          <div className="flex-1 rounded-lg border border-slate-200/70 bg-white/50 px-3 py-2 shadow-sm dark:border-slate-800/70 dark:bg-slate-900/30" style={{ borderLeftColor: tint, borderLeftWidth: 2 }}>
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-200">
+                                  {a.truckId}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                                  {isCritical ? "Critical" : "Warning"}
+                                </span>
+                              </div>
+                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                {new Date(a.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-700 dark:text-slate-200 mb-1">{a.reason}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{a.secondsDrowsy}s duration</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-3">
+            <section className={`${SURFACE_CLASS}`}>
+              <div className="border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    <Radar className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Driver vitals</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Live snapshot</p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-3">
+                {biometrics.map((stat) => {
+                  const progress = stat.progress ?? null;
+                  const safeProgress = progress !== null ? Math.min(Math.max(progress, 0), 100) : null;
+                  return (
+                    <div
+                      key={stat.key}
+                      className={`rounded-lg border border-slate-200/70 bg-slate-50/30 px-3 py-2 dark:border-slate-800/70 dark:bg-slate-900/30 ${safeProgress !== null ? 'flex items-center justify-between gap-3' : ''}`}
+                    >
+                      <div className="flex-1">
+                        <p className="text-[10px] uppercase tracking-wide font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{stat.value}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">{stat.helper}</p>
+                      </div>
+                      {safeProgress !== null && (
+                        <div className="flex-shrink-0">
+                          <div className="relative h-12 w-12">
+                            <div
+                              className="absolute inset-0 rounded-full"
+                              style={{
+                                background: `conic-gradient(#0ea5e9 ${safeProgress}%, rgba(148,163,184,0.2) ${safeProgress}% 100%)`,
+                              }}
+                            />
+                            <div className="absolute inset-1 flex items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-900 dark:bg-slate-950 dark:text-white">
+                              {safeProgress}%
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className={`${SURFACE_CLASS} overflow-hidden`}>
+              <div className="border-b border-slate-100/70 px-4 py-3 dark:border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-200">
+                    <Radar className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Live driver feed</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Secure stream</p>
+                  </div>
+                </div>
+              </div>
+              <div className="relative px-4 py-3">
+                <div className="flex h-[160px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 text-slate-500 dark:border-slate-600 dark:from-slate-900 dark:to-slate-800">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-200 text-slate-400 dark:bg-slate-700 dark:text-slate-500">
+                    <Radar className="h-4 w-4" />
+                  </div>
+                  <h3 className="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Live video feed
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Coming soon</p>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>
