@@ -1,8 +1,8 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import DarkModeToggle from "./DarkModeToggle";
-import { Radar, Search as SearchIcon, Shield, Sparkles, Timeline } from "./icons";
+import { Radar, User, LineChart } from "./icons";
 import { useStore } from "../state/store";
 
 type NavItem = {
@@ -20,35 +20,14 @@ export default function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const headerRef = useRef<HTMLElement | null>(null);
+  const navRefs = useRef<(HTMLElement | null)[]>([]);
   const trucks = useStore((s) => s.trucks);
   const alerts = useStore((s) => s.alerts);
   const telemetryByTruckId = useStore((s) => s.telemetryByTruckId);
   const firstTruckId = trucks[0]?.id ?? null;
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
 
-  useEffect(() => {
-    const header = headerRef.current;
-    if (!header) return;
-
-    const updateHeight = () => {
-      document.documentElement.style.setProperty(
-        "--app-header-height",
-        `${header.getBoundingClientRect().height}px`
-      );
-    };
-
-    updateHeight();
-
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(updateHeight);
-      ro.observe(header);
-      return () => ro.disconnect();
-    }
-
-    window.addEventListener("resize", updateHeight);
-    return () => window.removeEventListener("resize", updateHeight);
-  }, []);
+  const pathname = location.pathname;
 
   const metrics = useMemo(() => {
     const totalTrucks = trucks.length;
@@ -97,16 +76,16 @@ export default function AppHeader() {
         label: "Driver Studio",
         description: "Deep driver insights",
         to: "/driver-studio",
-        icon: <Sparkles className="w-5 h-5" />,
+        icon: <User className="w-5 h-5" />,
         match: (path) => path.startsWith("/driver-studio") || path.startsWith("/truck/"),
         disabled: false,
       },
       {
-        key: "long-term",
-        label: "Long Horizon",
+        key: "analytics",
+        label: "Analytics",
         description: "Trend analytics",
         to: firstTruckId ? `/long-term/${firstTruckId}` : "/",
-        icon: <Timeline className="w-5 h-5" />,
+        icon: <LineChart className="w-5 h-5" />,
         match: (path) => path.startsWith("/long-term"),
         disabled: !firstTruckId,
       },
@@ -137,8 +116,54 @@ export default function AppHeader() {
     },
   ];
 
-  const pathname = location.pathname;
   const activeIndex = navItems.findIndex((item) => item.match(pathname));
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+
+    const updateHeight = () => {
+      document.documentElement.style.setProperty(
+        "--app-header-height",
+        `${header.getBoundingClientRect().height}px`
+      );
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(updateHeight);
+      ro.observe(header);
+      return () => ro.disconnect();
+    }
+
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, []);
+
+  // Update indicator position based on active tab
+  useEffect(() => {
+    const updateIndicator = () => {
+      if (activeIndex >= 0 && navRefs.current[activeIndex]) {
+        const activeTab = navRefs.current[activeIndex];
+        if (activeTab) {
+          const parent = activeTab.parentElement;
+          if (parent) {
+            const parentRect = parent.getBoundingClientRect();
+            const tabRect = activeTab.getBoundingClientRect();
+            setIndicatorStyle({
+              left: tabRect.left - parentRect.left,
+              width: tabRect.width,
+            });
+          }
+        }
+      }
+    };
+
+    updateIndicator();
+    window.addEventListener("resize", updateIndicator);
+    return () => window.removeEventListener("resize", updateIndicator);
+  }, [activeIndex]);
 
   const renderNavTab = (item: NavItem, index: number) => {
     const isActive = item.match(pathname);
@@ -157,38 +182,27 @@ export default function AppHeader() {
 
     if (item.disabled) {
       return (
-        <div key={item.key} className={baseClasses} aria-disabled="true">
+        <div 
+          key={item.key} 
+          ref={(el) => { navRefs.current[index] = el; }}
+          className={baseClasses} 
+          aria-disabled="true"
+        >
           {content}
         </div>
       );
     }
 
     return (
-      <Link key={item.key} to={item.to} className={baseClasses}>
+      <Link 
+        key={item.key} 
+        to={item.to} 
+        ref={(el) => { navRefs.current[index] = el; }}
+        className={baseClasses}
+      >
         {content}
       </Link>
     );
-  };
-
-  const handleSearch = (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!searchTerm.trim()) {
-      setSearchFeedback("Enter driver name or truck ID");
-      return;
-    }
-    const term = searchTerm.trim().toLowerCase();
-    const match = trucks.find(
-      (truck) =>
-        truck.id.toLowerCase().includes(term) ||
-        truck.driverName?.toLowerCase().includes(term)
-    );
-
-    if (match) {
-      setSearchFeedback(null);
-      navigate(`/truck/${match.id}`);
-    } else {
-      setSearchFeedback("No matching driver or truck");
-    }
   };
 
   return (
@@ -196,63 +210,37 @@ export default function AppHeader() {
       ref={headerRef}
       className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"
     >
-      <div className="relative mx-auto max-w-6xl px-3 py-3">
-        <div className="grid grid-cols-3 items-center gap-6">
+      <div className="relative mx-auto max-w-full px-6 py-3">
+        <div className="flex items-center justify-between gap-6">
           {/* Brand Section - Left */}
-          <div className="flex items-center justify-start">
+          <div className="flex items-center">
             <img 
               src="/media/logo.png" 
               alt="Lucid" 
-              className="h-12 w-auto" 
-              style={{ filter: 'drop-shadow(3px 3px 6px rgba(0, 0, 0, 0.5))' }}
+              className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(37,99,235))_drop-shadow(-1px_0_0_rgb(37,99,235))_drop-shadow(0_1px_0_rgb(37,99,235))_drop-shadow(0_-1px_0_rgb(37,99,235))_drop-shadow(1px_1px_0_rgb(37,99,235))_drop-shadow(-1px_-1px_0_rgb(37,99,235))_drop-shadow(1px_-1px_0_rgb(37,99,235))_drop-shadow(-1px_1px_0_rgb(37,99,235))] dark:[filter:drop-shadow(1px_0_0_rgb(96,165,250))_drop-shadow(-1px_0_0_rgb(96,165,250))_drop-shadow(0_1px_0_rgb(96,165,250))_drop-shadow(0_-1px_0_rgb(96,165,250))_drop-shadow(1px_1px_0_rgb(96,165,250))_drop-shadow(-1px_-1px_0_rgb(96,165,250))_drop-shadow(1px_-1px_0_rgb(96,165,250))_drop-shadow(-1px_1px_0_rgb(96,165,250))]"
             />
           </div>
 
           {/* Navigation - Center */}
           <div className="flex justify-center">
-            <nav className="relative flex items-stretch bg-slate-50/80 dark:bg-slate-800/50 rounded-lg p-1">
+            <nav className="relative flex items-stretch bg-slate-100 dark:bg-slate-800/50 rounded-lg p-1">
               {/* Sliding indicator */}
               <div
-                className="absolute top-1 bottom-1 left-1 bg-white dark:bg-slate-700 rounded-md shadow-sm transition-all duration-300 ease-out"
+                className="absolute top-1 bottom-1 bg-white dark:bg-slate-700 rounded-md shadow-sm transition-all duration-300 ease-out"
                 style={{
-                  transform: `translateX(${activeIndex >= 0 ? activeIndex * 100 : 0}%)`,
-                  width: `calc((100% - 0.5rem) / ${navItems.length})`,
+                  left: `${indicatorStyle.left}px`,
+                  width: `${indicatorStyle.width}px`,
                 }}
               />
               {navItems.map((item, index) => renderNavTab(item, index))}
             </nav>
           </div>
 
-          {/* Stats & Controls - Right */}
-          <div className="flex items-center justify-end gap-4">
-            {/* Search */}
-            <form
-              onSubmit={handleSearch}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5"
-            >
-              <SearchIcon className="w-4 h-4 text-slate-400" />
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  if (searchFeedback) setSearchFeedback(null);
-                }}
-                placeholder="Search..."
-                className="w-24 bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
-              />
-            </form>
-
-            {/* Theme Toggle */}
+          {/* Dark Mode Toggle - Right */}
+          <div className="flex items-center">
             <DarkModeToggle />
           </div>
         </div>
-
-        {searchFeedback && (
-          <div className="mt-2">
-            <p className="text-xs text-rose-500">{searchFeedback}</p>
-          </div>
-        )}
       </div>
     </header>
   );

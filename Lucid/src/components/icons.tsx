@@ -107,3 +107,17 @@ export const Timeline = (props: IconProps) => (
     <circle cx="8" cy="18" r="2" />
   </svg>
 );
+
+export const User = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+export const LineChart = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M3 3v18h18" />
+    <path d="m19 9-5 5-4-4-3 3" />
+  </svg>
+);
