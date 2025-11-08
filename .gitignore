@@ -1,0 +1,16 @@
+# Virtual environments
+.venv/
+venv/
+api2/.venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Other
+.DS_Store
+*.log

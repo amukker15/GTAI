@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lucid API Tester</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #05070d;
+      color: #f5f7ff;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: clamp(1rem, 4vw, 3rem);
+    }
+    main {
+      width: min(960px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    h1 {
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.25em;
+      font-size: 1.4rem;
+      text-align: center;
+    }
+    form {
+      background: rgba(6, 10, 18, 0.92);
+      border: 1px solid rgba(118, 158, 255, 0.3);
+      border-radius: 24px;
+      padding: clamp(1rem, 3vw, 1.5rem);
+      display: grid;
+      gap: 1rem;
+    }
+    label {
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8ea6d9;
+    }
+    input, button {
+      font: inherit;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+      color: inherit;
+      padding: 0.65rem 0.8rem;
+      width: 100%;
+    }
+    input[type="file"] {
+      padding: 0.35rem 0.8rem;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      background: linear-gradient(135deg, #bfe0ff, #7ab2ff);
+      color: #05070d;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .card {
+      background: rgba(6, 10, 18, 0.92);
+      border: 1px solid rgba(118, 158, 255, 0.3);
+      border-radius: 20px;
+      padding: 1rem;
+    }
+    .card button {
+      width: auto;
+      margin-bottom: 0.75rem;
+    }
+    .card h2 {
+      margin: 0 0 0.75rem;
+      font-size: 0.9rem;
+      letter-spacing: 0.2em;
+      color: #8fb4ff;
+      text-transform: uppercase;
+    }
+    dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: auto auto;
+      row-gap: 0.35rem;
+      column-gap: 0.75rem;
+      font-size: 0.9rem;
+    }
+    dt {
+      color: #8ea6d9;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    dd {
+      margin: 0;
+      font-weight: 600;
+      text-align: right;
+    }
+    ul.reasons {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+    }
+    ul.reasons li {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      padding: 0.5rem 0.6rem;
+    }
+    pre {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.85rem;
+    }
+    .status {
+      font-size: 0.9rem;
+      color: #8ea6d9;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Lucid API Tester</h1>
+    <form id="windowForm">
+      <div>
+        <label for="baseUrl">API Base URL</label>
+        <input id="baseUrl" name="baseUrl" type="url" value="http://localhost:8000" required />
+      </div>
+      <div>
+        <label for="video">Video File</label>
+        <input id="video" name="video" type="file" accept="video/*" required />
+      </div>
+      <div class="grid">
+        <div>
+          <label for="timestamp">Timestamp</label>
+          <input id="timestamp" name="timestamp" type="text" placeholder="e.g. 275.5 or 00:04:35" required />
+        </div>
+        <div>
+          <label for="sessionId">Session ID (optional)</label>
+          <input id="sessionId" name="sessionId" type="text" />
+        </div>
+        <div>
+          <label for="driverId">Driver ID (optional)</label>
+          <input id="driverId" name="driverId" type="text" />
+        </div>
+      </div>
+      <button type="submit">Run 30s Analysis</button>
+      <div class="status" id="status"></div>
+    </form>
+
+  <section id="results" hidden>
+      <div class="grid">
+        <article class="card">
+          <h2>Session</h2>
+          <dl>
+            <dt>ts_end</dt><dd id="tsEnd">--</dd>
+            <dt>session_id</dt><dd id="sessionOut">--</dd>
+            <dt>driver_id</dt><dd id="driverOut">--</dd>
+          </dl>
+        </article>
+        <article class="card">
+          <h2>PERCLOS</h2>
+          <dl>
+            <dt>PERCLOS (%)</dt><dd id="perclosPct">--</dd>
+            <dt>perclos_30s</dt><dd id="perclosFrac">--</dd>
+            <dt>ear_thresh_T</dt><dd id="earThresh">--</dd>
+          </dl>
+        </article>
+        <article class="card">
+          <h2>Head Pose</h2>
+          <dl>
+            <dt>pitchdown_avg</dt><dd id="pitchAvg">--</dd>
+            <dt>pitchdown_max</dt><dd id="pitchMax">--</dd>
+            <dt>droop_time</dt><dd id="droopTime">--</dd>
+            <dt>droop_duty</dt><dd id="droopDuty">--</dd>
+            <dt>pitch_thresh_Tp</dt><dd id="pitchThresh">--</dd>
+          </dl>
+        </article>
+        <article class="card">
+          <h2>Yawning</h2>
+          <dl>
+            <dt>yawn_count</dt><dd id="yawnCount">--</dd>
+            <dt>yawn_time</dt><dd id="yawnTime">--</dd>
+            <dt>yawn_duty</dt><dd id="yawnDuty">--</dd>
+            <dt>yawn_peak</dt><dd id="yawnPeak">--</dd>
+          </dl>
+        </article>
+        <article class="card">
+          <h2>Quality</h2>
+          <dl>
+            <dt>confidence</dt><dd id="confidence">--</dd>
+            <dt>fps</dt><dd id="fps">--</dd>
+          </dl>
+        </article>
+      </div>
+      <article class="card">
+        <h2>Raw JSON</h2>
+        <pre id="rawJson">--</pre>
+      </article>
+    </section>
+
+    <section class="card" id="stateCard" hidden>
+      <h2>Driver State</h2>
+      <button id="classifyBtn" disabled>Classify Current Window</button>
+      <dl>
+        <dt>State</dt><dd id="stateValue">--</dd>
+        <dt>Risk Score</dt><dd id="riskValue">--</dd>
+        <dt>State Confidence</dt><dd id="stateConfidence">--</dd>
+      </dl>
+      <h3 style="margin-top:1rem;font-size:0.85rem;letter-spacing:0.2em;text-transform:uppercase;color:#8fb4ff;">Reasons</h3>
+      <ul class="reasons" id="reasonList"></ul>
+      <h3 style="margin-top:1rem;font-size:0.85rem;letter-spacing:0.2em;text-transform:uppercase;color:#8fb4ff;">Thresholds</h3>
+      <pre id="thresholdsJson">--</pre>
+      <h3 style="margin-top:1rem;font-size:0.85rem;letter-spacing:0.2em;text-transform:uppercase;color:#8fb4ff;">State JSON</h3>
+      <pre id="stateJson">--</pre>
+    </section>
+
+    <section class="card" id="vitalsCard" hidden>
+      <h2>Driver Vitals</h2>
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin:0.75rem 0;">
+        <button id="simHrBtn" disabled>Get HR</button>
+        <button id="simHrvBtn" disabled>Get HRV</button>
+        <button id="simVitalsBtn" disabled>Get HR + HRV</button>
+      </div>
+      <dl>
+        <dt>HR (bpm)</dt><dd id="simHrValue">--</dd>
+        <dt>HRV (RMSSD ms)</dt><dd id="simHrvValue">--</dd>
+        <dt>State Used</dt><dd id="simStateUsed">--</dd>
+        <dt>Confidence</dt><dd id="simStateConfidence">--</dd>
+      </dl>
+      <pre id="simJson">--</pre>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('windowForm');
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const classifyBtn = document.getElementById('classifyBtn');
+    const stateCard = document.getElementById('stateCard');
+    const vitalsCard = document.getElementById('vitalsCard');
+    const simButtons = [
+      document.getElementById('simHrBtn'),
+      document.getElementById('simHrvBtn'),
+      document.getElementById('simVitalsBtn'),
+    ];
+    let lastWindowPayload = null;
+    let lastStatePayload = null;
+    const fieldMap = {
+      tsEnd: 'ts_end',
+      sessionOut: 'session_id',
+      driverOut: 'driver_id',
+      perclosPct: 'PERCLOS',
+      perclosFrac: 'perclos_30s',
+      earThresh: 'ear_thresh_T',
+      pitchAvg: 'pitchdown_avg_30s',
+      pitchMax: 'pitchdown_max_30s',
+      droopTime: 'droop_time_30s',
+      droopDuty: 'droop_duty_30s',
+      pitchThresh: 'pitch_thresh_Tp',
+      yawnCount: 'yawn_count_30s',
+      yawnTime: 'yawn_time_30s',
+      yawnDuty: 'yawn_duty_30s',
+      yawnPeak: 'yawn_peak_30s',
+      confidence: 'confidence',
+      fps: 'fps',
+    };
+
+    form.addEventListener('submit', async (evt) => {
+      evt.preventDefault();
+      const baseUrl = document.getElementById('baseUrl').value.replace(/\/+$/,'');
+      const fileInput = document.getElementById('video');
+      if (!fileInput.files.length) {
+        alert('Please choose a video file');
+        return;
+      }
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      statusEl.textContent = 'Uploading clip and running 30s analysis…';
+
+      const data = new FormData();
+      data.append('video', fileInput.files[0]);
+      data.append('timestamp', document.getElementById('timestamp').value);
+      const sessionVal = document.getElementById('sessionId').value;
+      const driverVal = document.getElementById('driverId').value;
+      if (sessionVal) data.append('session_id', sessionVal);
+      if (driverVal) data.append('driver_id', driverVal);
+
+      try {
+        const response = await fetch(`${baseUrl}/api/window`, {
+          method: 'POST',
+          body: data,
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ detail: response.statusText }));
+          throw new Error(err.detail || 'Request failed');
+        }
+        const payload = await response.json();
+        updateResults(payload);
+        lastWindowPayload = payload;
+        classifyBtn.disabled = false;
+        await classifyCurrentWindow(true);
+        statusEl.textContent = 'Done.';
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Error: ${err.message}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    classifyBtn.addEventListener('click', () => classifyCurrentWindow(false));
+
+    simButtons.forEach((button) =>
+      button.addEventListener('click', (event) => {
+        fetchVitals(event.target.id);
+      })
+    );
+
+    let classifyRunning = false;
+    async function classifyCurrentWindow(autoTrigger) {
+      if (!lastWindowPayload || classifyRunning) return;
+      classifyRunning = true;
+      const baseUrl = document.getElementById('baseUrl').value.replace(/\/+$/,'');
+      if (!autoTrigger) {
+        classifyBtn.disabled = true;
+        classifyBtn.textContent = 'Classifying…';
+      }
+      try {
+        const requestBody = windowToStatePayload(lastWindowPayload);
+        const response = await fetch(`${baseUrl}/v1/state`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ detail: response.statusText }));
+          throw new Error(err.detail || 'State endpoint failed');
+        }
+        const statePayload = await response.json();
+        updateStateResults(statePayload);
+      } catch (err) {
+        console.error(err);
+        if (!autoTrigger) {
+          statusEl.textContent = `State error: ${err.message}`;
+        }
+      } finally {
+        classifyRunning = false;
+        classifyBtn.disabled = false;
+        classifyBtn.textContent = 'Classify Current Window';
+      }
+    }
+
+    function updateResults(payload) {
+      resultsEl.hidden = false;
+      Object.entries(fieldMap).forEach(([elementId, key]) => {
+        const el = document.getElementById(elementId);
+        const value = payload[key];
+        if (value === null || value === undefined || value === '') {
+          el.textContent = '--';
+          return;
+        }
+        const numberLike = typeof value === 'number';
+        el.textContent = numberLike ? formatNumber(value) : value;
+      });
+      document.getElementById('rawJson').textContent = JSON.stringify(payload, null, 2);
+      enableVitalsCard();
+    }
+
+    function windowToStatePayload(windowPayload) {
+      const ensureId = (value, fallback) => value && value.length ? value : fallback;
+      return {
+        ts_end: windowPayload.ts_end,
+        session_id: ensureId(windowPayload.session_id, 'session-unknown'),
+        driver_id: ensureId(windowPayload.driver_id, 'driver-unknown'),
+        perclos_30s: windowPayload.perclos_30s,
+        ear_thresh_T: windowPayload.ear_thresh_T,
+        pitchdown_avg_30s: windowPayload.pitchdown_avg_30s,
+        pitchdown_max_30s: windowPayload.pitchdown_max_30s,
+        droop_time_30s: windowPayload.droop_time_30s,
+        droop_duty_30s: windowPayload.droop_duty_30s,
+        pitch_thresh_Tp: windowPayload.pitch_thresh_Tp,
+        yawn_count_30s: windowPayload.yawn_count_30s,
+        yawn_time_30s: windowPayload.yawn_time_30s,
+        yawn_duty_30s: windowPayload.yawn_duty_30s,
+        yawn_peak_30s: windowPayload.yawn_peak_30s,
+        confidence: windowPayload.confidence,
+        fps: windowPayload.fps,
+      };
+    }
+
+    function updateStateResults(payload) {
+      stateCard.hidden = false;
+      document.getElementById('stateValue').textContent = payload.state;
+      document.getElementById('riskValue').textContent = `${payload.risk_score}`;
+      document.getElementById('stateConfidence').textContent = payload.state_confidence;
+      const reasonList = document.getElementById('reasonList');
+      reasonList.innerHTML = '';
+      payload.reasons.forEach((reason) => {
+        const li = document.createElement('li');
+        li.textContent = `${reason.signal} ${reason.relation} ${reason.threshold ?? ''} (value: ${reason.value ?? '--'})`;
+        reasonList.appendChild(li);
+      });
+      document.getElementById('thresholdsJson').textContent = JSON.stringify(payload.thresholds_used, null, 2);
+      document.getElementById('stateJson').textContent = JSON.stringify(payload, null, 2);
+      lastStatePayload = payload;
+      enableVitalsCard();
+    }
+
+    function enableVitalsCard() {
+      if (!lastWindowPayload || !lastStatePayload) return;
+      vitalsCard.hidden = false;
+      simButtons.forEach((btn) => (btn.disabled = false));
+    }
+
+    async function fetchVitals(buttonId) {
+      if (!lastWindowPayload) {
+        alert('Run the 30-second analysis first.');
+        return;
+      }
+      if (!lastStatePayload) {
+        statusEl.textContent = 'Waiting for driver state before fetching vitals…';
+        await classifyCurrentWindow(true);
+        if (!lastStatePayload) {
+          return;
+        }
+      }
+      const endpointMap = {
+        simHrBtn: '/v1/sim/hr',
+        simHrvBtn: '/v1/sim/hrv',
+        simVitalsBtn: '/v1/sim/vitals',
+      };
+      const endpoint = endpointMap[buttonId];
+      if (!endpoint) return;
+      const baseUrl = document.getElementById('baseUrl').value.replace(/\/+$/,'');
+      const body = {
+        session_id: lastWindowPayload.session_id || 'session-unknown',
+        driver_id: lastWindowPayload.driver_id || 'driver-unknown',
+      };
+      try {
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ detail: response.statusText }));
+          throw new Error(err.detail || 'Vitals endpoint failed');
+        }
+        const payload = await response.json();
+        updateVitalsResults(payload);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Vitals error: ${err.message}`;
+      }
+    }
+
+    function updateVitalsResults(payload) {
+      if (payload.hr_bpm !== undefined) {
+        document.getElementById('simHrValue').textContent = Number(payload.hr_bpm).toFixed(1);
+      }
+      if (payload.hrv_rmssd_ms !== undefined) {
+        document.getElementById('simHrvValue').textContent = Number(payload.hrv_rmssd_ms).toFixed(1);
+      }
+      document.getElementById('simStateUsed').textContent = payload.state_used || '--';
+      document.getElementById('simStateConfidence').textContent = payload.confidence || '--';
+      document.getElementById('simJson').textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function formatNumber(value) {
+      if (Math.abs(value) >= 10) return value.toFixed(2);
+      if (Math.abs(value) >= 1) return value.toFixed(3);
+      return value.toFixed(4);
+    }
+  </script>
+</body>
+</html>

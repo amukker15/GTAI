@@ -1,0 +1,422 @@
+"""MediaPipe-based 30-second window analyzer used by all CV endpoints."""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Sequence
+
+import cv2
+import mediapipe as mp
+import numpy as np
+
+from .config import AnalyzerConfig, POSE_MODEL
+from .models import AnalysisSummary, Sample
+from .utils import clamp, probe_creation_time, resolve_ts_end_iso, window_bounds
+from .video import VideoWindowExtractor
+
+
+@dataclass(slots=True)
+class RunStats:
+    total_frames: int = 0
+    detected_frames: int = 0
+    high_conf_frames: int = 0
+
+
+class WindowAnalyzer:
+    def __init__(self, config: AnalyzerConfig | None = None):
+        self.config = config or AnalyzerConfig()
+        self._face_mesh_kwargs = dict(
+            static_image_mode=False,
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+
+    def analyze(
+        self,
+        video_path: str | Path,
+        timestamp_seconds: float,
+        session_id: str | None,
+        driver_id: str | None,
+    ) -> AnalysisSummary:
+        extractor = VideoWindowExtractor(video_path)
+        start, end = window_bounds(extractor.meta.duration, timestamp_seconds, self.config.window_seconds)
+        creation_time = probe_creation_time(video_path)
+
+        samples, stats = self._process_frames(extractor, start, end)
+        if not samples:
+            raise ValueError("no frames were processed for the requested window")
+
+        ts_end_iso = resolve_ts_end_iso(creation_time, timestamp_seconds)
+        return self._summarize(samples, stats, session_id, driver_id, ts_end_iso, start, end)
+
+    def _process_frames(
+        self,
+        extractor: VideoWindowExtractor,
+        start: float,
+        end: float,
+    ) -> tuple[list[Sample], RunStats]:
+        stats = RunStats()
+        samples: list[Sample] = []
+        with mp.solutions.face_mesh.FaceMesh(**self._face_mesh_kwargs) as face_mesh:
+            for frame_time, frame in extractor.iter_window(start, end):
+                stats.total_frames += 1
+                rgb = np.ascontiguousarray(frame)
+                rgb.flags.writeable = False
+                results = face_mesh.process(rgb)
+                landmarks = results.multi_face_landmarks[0].landmark if results.multi_face_landmarks else None
+
+                if landmarks:
+                    stats.detected_frames += 1
+                    confidence_score = self._compute_confidence(landmarks)
+                    high_conf = confidence_score >= self.config.confidence_threshold
+                    if high_conf:
+                        stats.high_conf_frames += 1
+
+                    ear = self._compute_ear(landmarks)
+                    mar = self._compute_mar(landmarks)
+                    pitch_down = self._compute_pitch_down(landmarks, frame.shape[1], frame.shape[0])
+                else:
+                    confidence_score = 0.0
+                    high_conf = False
+                    ear = None
+                    mar = None
+                    pitch_down = None
+
+                samples.append(
+                    Sample(
+                        time=min(end, max(start, frame_time)),
+                        ear=ear,
+                        mar=mar,
+                        pitch_down=pitch_down,
+                        confidence=confidence_score,
+                        has_face=bool(landmarks),
+                    )
+                )
+
+        # Ensure explicit samples at both window boundaries for integration convenience
+        if samples and samples[0].time > start:
+            head = samples[0]
+            samples.insert(
+                0,
+                Sample(
+                    time=start,
+                    ear=head.ear,
+                    mar=head.mar,
+                    pitch_down=head.pitch_down,
+                    confidence=head.confidence,
+                    has_face=head.has_face,
+                ),
+            )
+
+        if samples and samples[-1].time < end:
+            tail = samples[-1]
+            samples.append(
+                Sample(
+                    time=end,
+                    ear=tail.ear,
+                    mar=tail.mar,
+                    pitch_down=tail.pitch_down,
+                    confidence=tail.confidence,
+                    has_face=tail.has_face,
+                )
+            )
+
+        return samples, stats
+
+    def _summarize(
+        self,
+        samples: list[Sample],
+        stats: RunStats,
+        session_id: str | None,
+        driver_id: str | None,
+        ts_end_iso: datetime,
+        start: float,
+        end: float,
+    ) -> AnalysisSummary:
+        window = max(1e-6, end - start)
+        ears = [s.ear for s in samples if s.ear is not None]
+        ear_thresh = self._adaptive_threshold(
+            ears,
+            self.config.ear_threshold_default,
+            self.config.ear_threshold_bounds,
+            self.config.ear_threshold_percentile,
+        )
+        perclos_time = self._integrate_boolean(
+            samples,
+            start,
+            end,
+            lambda s: s.ear is not None and s.ear < ear_thresh,
+        )
+        perclos_ratio = perclos_time / window
+
+        pitch_values = [s.pitch_down for s in samples if s.pitch_down is not None]
+        pitch_thresh = self._adaptive_threshold(
+            pitch_values,
+            self.config.pitch_threshold_default,
+            self.config.pitch_threshold_bounds,
+            self.config.pitch_threshold_percentile,
+        )
+        droop_time = self._integrate_boolean(
+            samples,
+            start,
+            end,
+            lambda s: s.pitch_down is not None and s.pitch_down >= pitch_thresh,
+        )
+        droop_duty = droop_time / window
+        pitchdown_avg = float(np.mean(pitch_values)) if pitch_values else 0.0
+        pitchdown_max = float(np.max(pitch_values)) if pitch_values else 0.0
+
+        mar_values = [s.mar for s in samples if s.mar is not None]
+        mar_thresh = self._adaptive_threshold(
+            mar_values,
+            self.config.mar_threshold_default,
+            self.config.mar_threshold_bounds,
+            self.config.mar_threshold_percentile,
+        )
+        yawn_events = self._detect_yawns(samples, start, end, mar_thresh)
+        yawn_time = sum(evt[1] - evt[0] for evt in yawn_events)
+        yawn_duty = yawn_time / window if window else 0.0
+        yawn_peak = max((evt[2] for evt in yawn_events), default=0.0)
+
+        high_conf_ratio = (
+            stats.high_conf_frames / stats.detected_frames if stats.detected_frames else 0.0
+        )
+        confidence_label = "OK" if high_conf_ratio >= 0.6 else "Low"
+        fps_observed = stats.total_frames / window
+
+        return AnalysisSummary(
+            ts_end_iso=ts_end_iso,
+            session_id=session_id,
+            driver_id=driver_id,
+            perclos_ratio=perclos_ratio,
+            perclos_percent=perclos_ratio * 100,
+            ear_threshold=ear_thresh,
+            pitchdown_avg=pitchdown_avg,
+            pitchdown_max=pitchdown_max,
+            droop_time=droop_time,
+            droop_duty=droop_duty,
+            pitch_threshold=pitch_thresh,
+            yawn_count=len(yawn_events),
+            yawn_time=yawn_time,
+            yawn_duty=yawn_duty,
+            yawn_peak=yawn_peak,
+            confidence_label=confidence_label,
+            fps_observed=fps_observed,
+        )
+
+    # --- helpers ---------------------------------------------------------
+
+    def _compute_confidence(self, landmarks: Sequence) -> float:
+        iris_visible = all(self._has_landmark(landmarks, idx) for idx in self.config.iris_indices)
+        def lid(idx_a: int, idx_b: int) -> float:
+            la, lb = landmarks[idx_a], landmarks[idx_b]
+            return abs(la.y - lb.y)
+
+        lid_spread = abs(landmarks[159].y - landmarks[145].y)
+        score = (0.4 + lid_spread * 120) if iris_visible else (lid_spread * 80)
+        return clamp(score, 0.0, 1.0)
+
+    def _compute_ear(self, landmarks: Sequence) -> float | None:
+        pairs = self.config.ear_pairs
+        left = self._eye_ear(landmarks, *pairs["left"])
+        right = self._eye_ear(landmarks, *pairs["right"])
+        if left is None or right is None:
+            return None
+        return (left + right) / 2.0
+
+    def _eye_ear(
+        self,
+        landmarks: Sequence,
+        corner_outer: int,
+        corner_inner: int,
+        upper1: int,
+        lower1: int,
+        upper2: int,
+        lower2: int,
+    ) -> float | None:
+        horizontal = self._distance(landmarks[corner_outer], landmarks[corner_inner])
+        vertical1 = self._distance(landmarks[upper1], landmarks[lower1])
+        vertical2 = self._distance(landmarks[upper2], landmarks[lower2])
+        if not horizontal:
+            return None
+        return (vertical1 + vertical2) / (2.0 * horizontal)
+
+    def _compute_mar(self, landmarks: Sequence) -> float | None:
+        left_idx, right_idx = self.config.mouth_corners
+        mouth_width = self._distance(landmarks[left_idx], landmarks[right_idx])
+        if not mouth_width:
+            return None
+        accum = []
+        for up, low in self.config.mar_pairs:
+            gap = self._distance(landmarks[up], landmarks[low])
+            if gap:
+                accum.append(gap)
+        if not accum:
+            return None
+        return (sum(accum) / len(accum)) / mouth_width
+
+    def _compute_pitch_down(self, landmarks: Sequence, width: int, height: int) -> float | None:
+        solve = self._solve_pnp(landmarks, width, height)
+        if solve is None:
+            return self._estimate_pitch_fallback(landmarks)
+        return max(0.0, -solve["pitch"])  # convert to downward positive
+
+    def _solve_pnp(self, landmarks: Sequence, width: int, height: int) -> dict | None:
+        fx = width * 1.2
+        fy = height * 1.2
+        cx = width / 2
+        cy = height / 2
+        camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
+        dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+
+        image_points = []
+        model_points = []
+        for idx, coords in POSE_MODEL:
+            if not self._has_landmark(landmarks, idx):
+                return None
+            lm = landmarks[idx]
+            image_points.append([lm.x * width, lm.y * height])
+            model_points.append(list(coords))
+
+        success, rvec, tvec = cv2.solvePnP(
+            np.array(model_points, dtype=np.float64),
+            np.array(image_points, dtype=np.float64),
+            camera_matrix,
+            dist_coeffs,
+            flags=cv2.SOLVEPNP_ITERATIVE,
+        )
+        if not success:
+            return None
+
+        rotation_matrix, _ = cv2.Rodrigues(rvec)
+        angles = self._rotation_matrix_to_euler(rotation_matrix)
+        return {"yaw": angles[0], "pitch": angles[1], "roll": angles[2]}
+
+    def _estimate_pitch_fallback(self, landmarks: Sequence) -> float | None:
+        if not (self._has_landmark(landmarks, 10) and self._has_landmark(landmarks, 152)):
+            return None
+        top = landmarks[10]
+        bottom = landmarks[152]
+        dy = bottom.y - top.y
+        dz = bottom.z - top.z
+        angle = math.atan2(dz, dy)
+        pitch = abs(math.degrees(angle))
+        return pitch
+
+    def _rotation_matrix_to_euler(self, rotation: np.ndarray) -> tuple[float, float, float]:
+        sy = math.sqrt(rotation[0, 0] ** 2 + rotation[1, 0] ** 2)
+        singular = sy < 1e-6
+        if not singular:
+            yaw = math.atan2(rotation[2, 1], rotation[2, 2])
+            pitch = math.atan2(-rotation[2, 0], sy)
+            roll = math.atan2(rotation[1, 0], rotation[0, 0])
+        else:
+            yaw = math.atan2(-rotation[1, 2], rotation[1, 1])
+            pitch = math.atan2(-rotation[2, 0], sy)
+            roll = 0.0
+        return (math.degrees(yaw), math.degrees(pitch), math.degrees(roll))
+
+    def _adaptive_threshold(
+        self,
+        values: Sequence[float],
+        default: float,
+        bounds: tuple[float, float],
+        percentile: float,
+    ) -> float:
+        if not values:
+            return default
+        thresh = float(np.percentile(values, percentile))
+        return clamp(thresh, bounds[0], bounds[1])
+
+    def _integrate_boolean(
+        self,
+        samples: Sequence[Sample],
+        start: float,
+        end: float,
+        predicate: Callable[[Sample], bool],
+    ) -> float:
+        if not samples:
+            return 0.0
+        total = 0.0
+        prev_time = start
+        prev_state = predicate(samples[0])
+        for sample in samples:
+            t = max(start, min(end, sample.time))
+            dt = max(0.0, t - prev_time)
+            if prev_state and dt:
+                total += dt
+            prev_state = predicate(sample)
+            prev_time = t
+        if prev_state and prev_time < end:
+            total += end - prev_time
+        return min(end - start, max(0.0, total))
+
+    def _detect_yawns(
+        self,
+        samples: Sequence[Sample],
+        start: float,
+        end: float,
+        threshold: float,
+    ) -> list[tuple[float, float, float]]:
+        events: list[tuple[float, float, float]] = []
+        active = False
+        candidate_start: float | None = None
+        end_candidate: float | None = None
+        last_end: float = -math.inf
+        peak = 0.0
+        start_time: float | None = None
+
+        for sample in samples:
+            t = max(start, min(end, sample.time))
+            mar = sample.mar or 0.0
+            high_conf = sample.has_face and sample.confidence >= self.config.confidence_threshold
+            above = high_conf and mar > threshold
+
+            if not active:
+                if above and t - last_end >= self.config.yawn_refractory:
+                    candidate_start = candidate_start or t
+                    if t - candidate_start >= self.config.yawn_start_hold:
+                        active = True
+                        peak = mar
+                        start_time = candidate_start
+                        candidate_start = None
+                else:
+                    candidate_start = None
+            else:
+                if above:
+                    peak = max(peak, mar)
+                    end_candidate = None
+                else:
+                    end_candidate = end_candidate or t
+                    if (
+                        t - end_candidate >= self.config.yawn_end_hold
+                        and start_time is not None
+                    ):
+                        events.append((start_time, end_candidate, peak))
+                        last_end = end_candidate
+                        active = False
+                        peak = 0.0
+                        end_candidate = None
+                        start_time = None
+
+        if active and start_time is not None:
+            events.append((start_time, end, peak))
+        return events
+
+    @staticmethod
+    def _distance(a, b) -> float:
+        if a is None or b is None:
+            return 0.0
+        dx = a.x - b.x
+        dy = a.y - b.y
+        dz = (getattr(a, "z", 0.0) or 0.0) - (getattr(b, "z", 0.0) or 0.0)
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    @staticmethod
+    def _has_landmark(landmarks: Sequence, idx: int) -> bool:
+        return idx < len(landmarks) and landmarks[idx] is not None
