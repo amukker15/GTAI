@@ -60,6 +60,7 @@ def get_conn():
     warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
     database = os.getenv("SNOWFLAKE_DATABASE", DEFAULT_DB)
     schema = os.getenv("SNOWFLAKE_SCHEMA", DEFAULT_SCHEMA)
+    host = os.getenv("SNOWFLAKE_HOST")
 
     conn_kwargs = dict(
         user=user,
@@ -67,7 +68,15 @@ def get_conn():
         account=account,
         database=database,
         schema=schema,
+        login_timeout=30,
+        network_timeout=60,
     )
+    
+    # Use host if provided (overrides account for connection URL)
+    if host:
+        conn_kwargs["host"] = host
+        print(f"[Snowflake] Connecting using host: {host}")
+    
     if warehouse:
         conn_kwargs["warehouse"] = warehouse
 
@@ -132,3 +141,15 @@ def insert_drowsiness_measurement(data: Mapping[str, Any]) -> int:
     placeholders = ",".join(["%s"] * len(cols))
     query = f"INSERT INTO DROWSINESS_MEASUREMENTS ({','.join(cols)}) VALUES ({placeholders})"
     return execute(query, vals)
+
+
+def insert_status(status: str) -> int:
+    """Insert a status record into STATUS_TABLE and return affected row count.
+    
+    status: Driver status string (OK, DROWSY_SOON, ASLEEP)
+    """
+    if not status:
+        raise ValueError("status must be a non-empty string")
+    
+    query = "INSERT INTO STATUS_TABLE (STATUS, TIME_CREATED) VALUES (%s, CURRENT_TIMESTAMP())"
+    return execute(query, (status,))

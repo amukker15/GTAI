@@ -531,6 +531,31 @@ export const useStore = create<Store>((set, get) => ({
         hrv_rmssd_ms: heartRateVariability,
       };
 
+      // Save driver status to Snowflake if we have a computed state
+      if (driverState) {
+        try {
+          const statusFormData = new FormData();
+          statusFormData.append('status', driverState);
+          statusFormData.append('driver_id', result.driver_id ?? "demo_driver");
+          statusFormData.append('session_id', result.session_id ?? sessionId);
+          
+          const statusResponse = await fetch("http://localhost:8000/api/status", {
+            method: "POST",
+            mode: "cors",
+            body: statusFormData,
+          });
+          
+          if (statusResponse.ok) {
+            const statusResult = await statusResponse.json();
+            console.log(`[VideoAnalysis] Status ${driverState} saved to Snowflake at ${statusResult.timestamp}`);
+          } else {
+            console.warn(`[VideoAnalysis] Failed to save status to Snowflake: ${statusResponse.statusText}`);
+          }
+        } catch (statusError) {
+          console.warn('[VideoAnalysis] Failed to save driver status to Snowflake:', statusError);
+        }
+      }
+
       // Create cached result
       const cachedResult: CachedAnalysisResult = {
         ...enhancedResult,

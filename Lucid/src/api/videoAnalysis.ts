@@ -45,6 +45,14 @@ export type MeasurementsResponse = {
   }>;
 };
 
+export type StatusResponse = {
+  success: boolean;
+  status: string;
+  timestamp: string;
+  rows_affected?: number;
+  error?: string;
+};
+
 class VideoAnalysisService {
   private sessionId: string = `session_${Date.now()}`;
   private driverId: string = "demo_driver";
@@ -211,6 +219,39 @@ class VideoAnalysisService {
 
   isAnalysisRunning(): boolean {
     return this.isRunning;
+  }
+
+  async saveDriverStatus(status: string): Promise<StatusResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('status', status);
+      formData.append('driver_id', this.driverId);
+      formData.append('session_id', this.sessionId);
+      
+      const response = await fetch("http://localhost:8000/api/status", {
+        method: "POST",
+        mode: "cors",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Status save failed: ${response.statusText}`);
+      }
+      
+      const result: StatusResponse = await response.json();
+      console.log(`[VideoAnalysis] Status saved: ${status} at ${result.timestamp}`);
+      return result;
+      
+    } catch (error) {
+      console.warn('[VideoAnalysis] Failed to save driver status to Snowflake:', error);
+      // Return a failure response but don't throw - we don't want status saving to break the UI
+      return {
+        success: false,
+        status,
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
   }
 }
 
