@@ -45,6 +45,11 @@ class AnalysisSummary:
     yawn_peak: float
     confidence_label: str
     fps_observed: float
+    # Quality metrics for PERCLOS assessment
+    valid_sample_ratio: float = 0.0  # Ratio of samples with valid EAR measurements
+    interpolated_sample_ratio: float = 0.0  # Ratio of samples that were interpolated
+    high_confidence_ratio: float = 0.0  # Ratio of high-confidence samples
+    perclos_confidence_score: float = 0.0  # Overall confidence in PERCLOS measurement (0-1)
 
 
 class BaseWindowResponse(BaseModel):

@@ -35,6 +35,17 @@ const SIGNAL_LABELS: Record<string, string> = {
 
 const PERCENT_SIGNALS = new Set(["perclos_30s", "yawn_duty_30s", "droop_duty_30s"]);
 
+const SAMPLE_INTERVAL_SECONDS = 30;
+const MIN_REQUIRED_SAMPLES = 3;
+const MIN_ANALYSIS_DURATION = SAMPLE_INTERVAL_SECONDS * MIN_REQUIRED_SAMPLES;
+
+const getStopThreshold = (videoDuration: number | null): number => {
+  if (typeof videoDuration !== "number" || Number.isNaN(videoDuration)) {
+    return MIN_ANALYSIS_DURATION;
+  }
+  return Math.max(videoDuration, MIN_ANALYSIS_DURATION);
+};
+
 const mapServerStateToDriverStatus = (state: string | undefined | null): DriverStatus | undefined => {
   if (!state) return undefined;
   const normalized = state.toLowerCase();
@@ -95,6 +106,24 @@ export type AnalysisResult = {
   driver_risk_score?: number;
 };
 
+type CachedAnalysisResult = AnalysisResult & {
+  cached_at: number;
+  from_cache: boolean;
+};
+
+type ScheduledCall = {
+  timestamp: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  attempts: number;
+  lastAttempt?: number;
+};
+
+type CallTracker = {
+  scheduledCalls: ScheduledCall[];
+  maxRetries: number;
+  retryDelay: number;
+};
+
 type Store = {
   trucks: Truck[];
   telemetryByTruckId: Record<string, Telemetry[]>;
@@ -109,6 +138,9 @@ type Store = {
   currentSessionId: string;
   isAnalysisRunning: boolean;
   videoDuration: number | null;
+  analysisCache: Record<string, CachedAnalysisResult>;
+  callTracker: CallTracker;
+  completedCalls: Set<number>;
   fetchTrucks: () => Promise<void>;
   pollTelemetry: () => () => void;
   pollAlerts: () => () => void;
@@ -121,6 +153,8 @@ type Store = {
   performVideoAnalysis: (targetTimestamp?: number) => Promise<void>;
   updateElapsedTime: (elapsed: number) => void;
   fetchVideoInfo: () => Promise<void>;
+  getCachedResult: (timestamp: number) => CachedAnalysisResult | null;
+  getAnalysisProgress: () => { completed: number; total: number; pending: ScheduledCall[] };
 };
 
 let globalTimerInterval: number | null = null;
@@ -139,6 +173,13 @@ export const useStore = create<Store>((set, get) => ({
   currentSessionId: `session_${Date.now()}`,
   isAnalysisRunning: false,
   videoDuration: null,
+  analysisCache: {},
+  callTracker: {
+    scheduledCalls: [],
+    maxRetries: 3,
+    retryDelay: 5000,
+  },
+  completedCalls: new Set<number>(),
 
   fetchTrucks: async () => {
     const t = await getTrucks();
@@ -197,29 +238,76 @@ export const useStore = create<Store>((set, get) => ({
     }
 
     const startTime = Date.now();
-    set({ appStartTime: startTime, isAnalysisRunning: false });
+    const videoLimit = get().videoDuration;
+    const stopThreshold = getStopThreshold(videoLimit);
+    
+    // Pre-schedule all API calls for deterministic execution
+    const scheduledCalls: ScheduledCall[] = [];
+    for (let timestamp = SAMPLE_INTERVAL_SECONDS; timestamp <= stopThreshold; timestamp += SAMPLE_INTERVAL_SECONDS) {
+      scheduledCalls.push({
+        timestamp,
+        status: 'pending',
+        attempts: 0,
+      });
+    }
 
-    // Update elapsed time every second
+    set({ 
+      appStartTime: startTime, 
+      isAnalysisRunning: false,
+      callTracker: {
+        ...get().callTracker,
+        scheduledCalls,
+      },
+      completedCalls: new Set<number>(),
+    });
+
+    console.log(`[Timer] Scheduled ${scheduledCalls.length} API calls:`, scheduledCalls.map(c => c.timestamp));
+
+    // Update elapsed time every second and manage API calls
     globalTimerInterval = window.setInterval(() => {
       const now = Date.now();
       const elapsed = Math.floor((now - get().appStartTime) / 1000);
       const sinceLast = get().lastApiCallTime > 0 ? Math.floor((now - get().lastApiCallTime) / 1000) : elapsed;
-      const videoLimit = get().videoDuration;
 
       set({ 
         globalElapsedTime: elapsed,
         secondsSinceLastApiCall: sinceLast
       });
 
-      // Trigger API call every 30 seconds
-      if (elapsed > 0 && elapsed % 30 === 0) {
-        if (!videoLimit || elapsed <= videoLimit) {
-          get().performVideoAnalysis(elapsed);
-        }
-      }
+      // Check for pending API calls that should be executed
+      const state = get();
+      const pendingCalls = state.callTracker.scheduledCalls.filter(
+        call => call.timestamp <= elapsed && call.status === 'pending'
+      );
 
-      if (videoLimit && elapsed >= videoLimit) {
-        get().stopGlobalTimer();
+      // Execute pending calls
+      pendingCalls.forEach(call => {
+        console.log(`[Timer] Executing scheduled call for ${call.timestamp}s`);
+        get().performVideoAnalysis(call.timestamp);
+      });
+
+      // Check for failed calls that need retry
+      const failedCalls = state.callTracker.scheduledCalls.filter(
+        call => call.status === 'failed' && 
+        call.attempts < state.callTracker.maxRetries &&
+        (!call.lastAttempt || (now - call.lastAttempt) > state.callTracker.retryDelay)
+      );
+
+      // Retry failed calls
+      failedCalls.forEach(call => {
+        console.log(`[Timer] Retrying failed call for ${call.timestamp}s (attempt ${call.attempts + 1})`);
+        get().performVideoAnalysis(call.timestamp);
+      });
+
+      // Stop timer when all calls are completed or max time reached
+      if (elapsed >= stopThreshold) {
+        const allCallsCompleted = state.callTracker.scheduledCalls.every(
+          call => call.status === 'completed'
+        );
+        if (allCallsCompleted || elapsed >= stopThreshold + 30) {
+          console.log(`[Timer] Stopping - elapsed: ${elapsed}s, completed: ${allCallsCompleted}`);
+          get().stopGlobalTimer();
+        }
       }
     }, 1000);
   },
@@ -254,7 +342,7 @@ export const useStore = create<Store>((set, get) => ({
       console.warn("Error resetting Snowflake session:", error);
     }
     
-    // Reset all timing data
+    // Reset all timing data and clear cache
     const newStartTime = Date.now();
     const newSessionId = `session_${newStartTime}`;
     
@@ -265,8 +353,17 @@ export const useStore = create<Store>((set, get) => ({
       secondsSinceLastApiCall: 0,
       analysisResults: [],
       currentSessionId: newSessionId,
-      isAnalysisRunning: false
+      isAnalysisRunning: false,
+      analysisCache: {},
+      callTracker: {
+        scheduledCalls: [],
+        maxRetries: 3,
+        retryDelay: 5000,
+      },
+      completedCalls: new Set<number>(),
     });
+    
+    console.log("[Reset] Cleared all analysis cache and reset session");
     
     // Start new timer
     get().startGlobalTimer();
@@ -277,31 +374,45 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   performVideoAnalysis: async (targetTimestamp?: number) => {
+    const state = get();
+    const currentTime = typeof targetTimestamp === "number" ? targetTimestamp : state.globalElapsedTime;
+    const sessionId = state.currentSessionId;
+    const cacheKey = `${sessionId}_${currentTime}`;
+
+    if (currentTime <= 0) {
+      return;
+    }
+
+    // Check cache first - return cached result immediately
+    const cachedResult = state.analysisCache[cacheKey];
+    if (cachedResult) {
+      console.log(`[VideoAnalysis] Returning cached result for ${currentTime}s`);
+      return;
+    }
+
+    // Check if this call is already completed
+    if (state.completedCalls.has(currentTime)) {
+      console.log(`[VideoAnalysis] Call for ${currentTime}s already completed`);
+      return;
+    }
+
+    // Update call tracker to mark as processing
+    const updatedCalls = state.callTracker.scheduledCalls.map(call => 
+      call.timestamp === currentTime 
+        ? { ...call, status: 'processing' as const, attempts: call.attempts + 1, lastAttempt: Date.now() }
+        : call
+    );
+
+    set((state) => ({
+      callTracker: { ...state.callTracker, scheduledCalls: updatedCalls }
+    }));
+
     try {
-      const state = get();
-      const currentTime = typeof targetTimestamp === "number" ? targetTimestamp : state.globalElapsedTime;
-      const sessionId = state.currentSessionId;
-
-      // Prevent multiple simultaneous analysis calls
-      if (state.isAnalysisRunning) {
-        console.log(`[VideoAnalysis] Skipping analysis at ${currentTime}s - analysis already running`);
-        return;
-      }
-
-      if (currentTime <= 0) {
-        return;
-      }
-
-      // Set analysis running flag
-      set({ isAnalysisRunning: true });
-
-      const videoTimestamp = currentTime;
-
-      console.log(`[VideoAnalysis] Performing analysis at ${currentTime}s (video time: ${videoTimestamp}s)`);
+      console.log(`[VideoAnalysis] Performing analysis at ${currentTime}s (attempt ${updatedCalls.find(c => c.timestamp === currentTime)?.attempts || 1})`);
       
       // Create form data for analysis (no need to upload video - backend will use footage directory)
       const formData = new FormData();
-      formData.append("timestamp", videoTimestamp.toString());
+      formData.append("timestamp", currentTime.toString());
       formData.append("session_id", sessionId);
       formData.append("driver_id", "demo_driver");
       
@@ -318,7 +429,7 @@ export const useStore = create<Store>((set, get) => ({
       }
       
       const result: AnalysisResult = await analysisResponse.json();
-      console.log(`[VideoAnalysis] Analysis complete for ${currentTime}s (video: ${videoTimestamp}s):`, result);
+      console.log(`[VideoAnalysis] Analysis complete for ${currentTime}s:`, result);
 
       let driverState: DriverStatus | undefined;
       let driverStateLabel: string | undefined;
@@ -375,18 +486,53 @@ export const useStore = create<Store>((set, get) => ({
         driver_risk_score: driverRiskScore,
       };
 
-      // Update store with new result
-      set((state) => ({
-        analysisResults: [...state.analysisResults, enhancedResult],
-        lastApiCallTime: Date.now(),
-        secondsSinceLastApiCall: 0,
-        isAnalysisRunning: false
-      }));
+      // Create cached result
+      const cachedResult: CachedAnalysisResult = {
+        ...enhancedResult,
+        cached_at: Date.now(),
+        from_cache: false,
+      };
+
+      // Update store with new result, cache it, and mark call as completed
+      set((state) => {
+        const updatedCompletedCalls = new Set(state.completedCalls);
+        updatedCompletedCalls.add(currentTime);
+
+        const updatedCallTracker = state.callTracker.scheduledCalls.map(call => 
+          call.timestamp === currentTime 
+            ? { ...call, status: 'completed' as const }
+            : call
+        );
+
+        return {
+          analysisResults: [...state.analysisResults, enhancedResult],
+          lastApiCallTime: Date.now(),
+          secondsSinceLastApiCall: 0,
+          analysisCache: {
+            ...state.analysisCache,
+            [cacheKey]: cachedResult,
+          },
+          completedCalls: updatedCompletedCalls,
+          callTracker: {
+            ...state.callTracker,
+            scheduledCalls: updatedCallTracker,
+          },
+        };
+      });
       
     } catch (error) {
-      console.error(`[VideoAnalysis] Analysis failed:`, error);
-      // Make sure to clear the running flag even on error
-      set({ isAnalysisRunning: false });
+      console.error(`[VideoAnalysis] Analysis failed for ${currentTime}s:`, error);
+      
+      // Mark call as failed in tracker
+      const failedCalls = state.callTracker.scheduledCalls.map(call => 
+        call.timestamp === currentTime 
+          ? { ...call, status: 'failed' as const }
+          : call
+      );
+
+      set((state) => ({
+        callTracker: { ...state.callTracker, scheduledCalls: failedCalls }
+      }));
     }
   },
 
@@ -407,5 +553,29 @@ export const useStore = create<Store>((set, get) => ({
     } catch (error) {
       console.warn("[VideoInfo] Failed to fetch video info:", error);
     }
+  },
+
+  getCachedResult: (timestamp: number) => {
+    const state = get();
+    const cacheKey = `${state.currentSessionId}_${timestamp}`;
+    const cached = state.analysisCache[cacheKey];
+    if (cached) {
+      return {
+        ...cached,
+        from_cache: true,
+      };
+    }
+    return null;
+  },
+
+  getAnalysisProgress: () => {
+    const state = get();
+    const completed = state.callTracker.scheduledCalls.filter(call => call.status === 'completed').length;
+    const total = state.callTracker.scheduledCalls.length;
+    const pending = state.callTracker.scheduledCalls.filter(call => 
+      call.status === 'pending' || call.status === 'processing' || call.status === 'failed'
+    );
+    
+    return { completed, total, pending };
   },
 }));

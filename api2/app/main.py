@@ -69,6 +69,8 @@ _warmers_lock = Lock()
 BASE_DIR = Path(__file__).resolve().parents[1]
 CACHE_DIR = Path(os.getenv("ANALYSIS_CACHE_DIR", BASE_DIR / ".analysis_cache"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_CACHE_DIR = CACHE_DIR / "videos"
+UPLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _video_signature(video_path: Path) -> str:
@@ -86,6 +88,21 @@ def _timestamp_token(timestamp_seconds: float) -> str:
 def _cache_file_path(signature: str) -> Path:
     digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
     return CACHE_DIR / f"{digest}.json"
+
+
+def _materialize_upload_for_cache(tmp_path: Path, original_name: str | None) -> Path:
+    """Convert an uploaded temp file into a stable, content-addressed cache entry."""
+    suffix = Path(original_name or tmp_path.name).suffix or ".mp4"
+    digest = hashlib.sha256()
+    with tmp_path.open("rb") as src:
+        for chunk in iter(lambda: src.read(1024 * 1024), b""):
+            digest.update(chunk)
+    final_path = UPLOAD_CACHE_DIR / f"{digest.hexdigest()}{suffix}"
+    if final_path.exists():
+        tmp_path.unlink(missing_ok=True)
+    else:
+        tmp_path.replace(final_path)
+    return final_path
 
 
 def _cache_key(signature: str, timestamp_token: str) -> str:
@@ -273,6 +290,8 @@ async def analyze_request(
     timestamp_value: str,
     session_id: str | None,
     driver_id: str | None,
+    *,
+    disable_cache: bool = False,
 ):
     try:
         ts_seconds = parse_timestamp(timestamp_value)
@@ -290,9 +309,10 @@ async def analyze_request(
 
         _ensure_cache_warm(video_path)
 
-        cached = _get_cached_summary(video_path, ts_seconds)
-        if cached:
-            return cached
+        if not disable_cache:
+            cached = _get_cached_summary(video_path, ts_seconds)
+            if cached:
+                return cached
 
         try:
             summary = await run_in_threadpool(
@@ -305,15 +325,32 @@ async def analyze_request(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        _store_cached_summary(video_path, ts_seconds, summary)
+        if not disable_cache:
+            _store_cached_summary(video_path, ts_seconds, summary)
         return summary
     else:
-        # Original logic for uploaded video
+        # Uploaded videos are deduped into a content-addressed cache unless the
+        # caller explicitly disables caching (useful for interactive testers).
         tmp_path = await write_temp_file(video)
+        cached_video_path = tmp_path
+        if not disable_cache:
+            try:
+                cached_video_path = await run_in_threadpool(
+                    _materialize_upload_for_cache,
+                    tmp_path,
+                    video.filename,
+                )
+            except Exception:
+                cached_video_path = tmp_path
+
+            cached = _get_cached_summary(cached_video_path, ts_seconds)
+            if cached:
+                return cached
+
         try:
             summary = await run_in_threadpool(
                 analyzer.analyze,
-                tmp_path,
+                cached_video_path,
                 ts_seconds,
                 session_id,
                 driver_id,
@@ -322,9 +359,13 @@ async def analyze_request(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         finally:
             try:
-                os.unlink(tmp_path)
+                if cached_video_path == tmp_path and tmp_path.exists():
+                    os.unlink(tmp_path)
             except FileNotFoundError:
                 pass
+
+        if not disable_cache:
+            _store_cached_summary(cached_video_path, ts_seconds, summary)
         return summary
 
 
@@ -334,8 +375,15 @@ async def perclos_endpoint(
     timestamp: str = Form(..., description="Timestamp within the video (s or HH:MM:SS)"),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
+    disable_cache: bool = Form(False),
 ):
-    summary = await analyze_request(video, timestamp, session_id, driver_id)
+    summary = await analyze_request(
+        video,
+        timestamp,
+        session_id,
+        driver_id,
+        disable_cache=disable_cache,
+    )
     return PerclosResponse(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
@@ -352,8 +400,15 @@ async def head_pose_endpoint(
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
+    disable_cache: bool = Form(False),
 ):
-    summary = await analyze_request(video, timestamp, session_id, driver_id)
+    summary = await analyze_request(
+        video,
+        timestamp,
+        session_id,
+        driver_id,
+        disable_cache=disable_cache,
+    )
     return HeadPoseResponse(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
@@ -372,8 +427,15 @@ async def yawning_endpoint(
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
+    disable_cache: bool = Form(False),
 ):
-    summary = await analyze_request(video, timestamp, session_id, driver_id)
+    summary = await analyze_request(
+        video,
+        timestamp,
+        session_id,
+        driver_id,
+        disable_cache=disable_cache,
+    )
     return YawnResponse(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
@@ -391,8 +453,15 @@ async def quality_endpoint(
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
+    disable_cache: bool = Form(False),
 ):
-    summary = await analyze_request(video, timestamp, session_id, driver_id)
+    summary = await analyze_request(
+        video,
+        timestamp,
+        session_id,
+        driver_id,
+        disable_cache=disable_cache,
+    )
     return QualityResponse(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
@@ -408,8 +477,15 @@ async def aggregate_endpoint(
     timestamp: str = Form(...),
     session_id: str | None = Form(None),
     driver_id: str | None = Form(None),
+    disable_cache: bool = Form(False),
 ):
-    summary = await analyze_request(video, timestamp, session_id, driver_id)
+    summary = await analyze_request(
+        video,
+        timestamp,
+        session_id,
+        driver_id,
+        disable_cache=disable_cache,
+    )
     
     # Save to Snowflake database
     save_analysis_to_snowflake(summary, session_id, driver_id)

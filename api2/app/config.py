@@ -9,11 +9,12 @@ class AnalyzerConfig:
     """Tunables shared by every metric computation."""
 
     window_seconds: float = 30.0
-    confidence_threshold: float = 0.65
+    confidence_threshold: float = 0.5  # Lowered for better glasses/lighting handling
+    down_pitch_gate_deg: float = 25.0  # Slightly more lenient for head pose
 
-    ear_threshold_default: float = 0.21
-    ear_threshold_bounds: tuple[float, float] = (0.16, 0.30)
-    ear_threshold_percentile: float = 35.0
+    ear_threshold_default: float = 0.20  # Slightly lower default
+    ear_threshold_bounds: tuple[float, float] = (0.15, 0.32)  # Wider bounds for adaptation
+    ear_threshold_percentile: float = 30.0  # Lower percentile for better adaptation
 
     mar_threshold_default: float = 0.60
     mar_threshold_bounds: tuple[float, float] = (0.45, 0.75)
@@ -40,13 +41,13 @@ class AnalyzerConfig:
 
 @dataclass(frozen=True)
 class StateThresholds:
-    # PERCLOS thresholds (PERCLOS-first approach)
-    perclos_asleep_primary: float = 0.50  # A1: Primary asleep threshold
-    perclos_asleep_confirm: float = 0.40  # A2: Confirmatory asleep threshold
-    perclos_asleep_broad: float = 0.35    # A3: Broad confirmatory asleep threshold
-    perclos_drowsy_primary: float = 0.25  # D1: Primary drowsy threshold
-    perclos_drowsy_assist: float = 0.15   # D2: Assisted drowsy threshold
-    perclos_lucid_near: float = 0.12      # Near threshold for lucid warning
+    # PERCLOS thresholds (PERCLOS-first approach) - Updated for realistic classification
+    perclos_asleep_primary: float = 0.60  # A1: Primary asleep threshold (raised from 0.50)
+    perclos_asleep_confirm: float = 0.50  # A2: Confirmatory asleep threshold (raised from 0.40)
+    perclos_asleep_broad: float = 0.45    # A3: Broad confirmatory asleep threshold (raised from 0.35)
+    perclos_drowsy_primary: float = 0.30  # D1: Primary drowsy threshold (lowered to capture 32.7%)
+    perclos_drowsy_assist: float = 0.20   # D2: Assisted drowsy threshold (raised from 0.15)
+    perclos_lucid_near: float = 0.15      # Near threshold for lucid warning (raised from 0.12)
     
     # Supporting signal thresholds for confirmation
     yawn_duty_asleep: float = 0.25        # Confirmatory for asleep
@@ -70,12 +71,12 @@ class StateThresholds:
     fps_min_ok: float = 10.0
     hysteresis_seconds: int = 300
     
-    # Legacy compatibility (deprecated - use new thresholds above)
-    perclos_high_30s: float = 0.25
-    perclos_concerning_30s: float = 0.15
-    perclos_elevated_30s: float = 0.08
-    perclos_asleep_strict: float = 0.50
-    perclos_asleep_combo: float = 0.34
+    # Legacy compatibility (updated to match new thresholds)
+    perclos_high_30s: float = 0.30       # Updated to match perclos_drowsy_primary
+    perclos_concerning_30s: float = 0.20  # Updated to match perclos_drowsy_assist
+    perclos_elevated_30s: float = 0.15    # Updated to match perclos_lucid_near
+    perclos_asleep_strict: float = 0.60   # Updated to match perclos_asleep_primary
+    perclos_asleep_combo: float = 0.45    # Updated to match perclos_asleep_broad
     yawn_duty_concerning: float = 0.15
     yawn_duty_high: float = 0.25
     yawn_duty_elevated: float = 0.10
