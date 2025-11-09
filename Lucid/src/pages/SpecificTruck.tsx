@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useStore } from "../state/store";
 import type { AnalysisResult } from "../state/store";
 import type { LatLngTuple, LatLngBoundsExpression } from "leaflet";
-import { MapContainer, TileLayer, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip } from "react-leaflet";
 import {
   LineChart as ReLineChart,
   Line,
@@ -27,6 +27,28 @@ const MAP_LEGEND = [
   { label: "Lucid", color: statusToColor("OK") },
   { label: "Warning", color: statusToColor("DROWSY_SOON") },
   { label: "Critical", color: statusToColor("ASLEEP") },
+];
+
+// Atlanta to Chicago route coordinates (matching the home page route exactly)
+const ATLANTA_CHICAGO_ROUTE: LatLngTuple[] = [
+  [33.7490, -84.3880],
+  [35.0456, -85.3097],
+  [36.1627, -86.7816],
+  [38.2527, -85.7585],
+  [39.7684, -86.1581],
+  [41.8781, -87.6298],
+];
+
+// Start and end markers
+const ROUTE_MARKERS = [
+  { name: "Atlanta, GA", coords: [33.7490, -84.3880] as LatLngTuple, type: "start" },
+  { name: "Chicago, IL", coords: [41.8781, -87.6298] as LatLngTuple, type: "end" },
+];
+
+// Route bounds for optimal viewing (tighter for better zoom)
+const ATLANTA_CHICAGO_BOUNDS: LatLngBoundsExpression = [
+  [33.0, -87.5], // Southwest corner (tighter)
+  [42.5, -82.5], // Northeast corner (tighter)
 ];
 
 const SURFACE_CLASS =
@@ -301,8 +323,14 @@ export default function TruckDetail() {
 
   const history: Telemetry[] = telemetryByTruckId[truckId] || [];
   const latest = history[history.length - 1];
-  const center: LatLngTuple = latest ? [latest.lat, latest.lng] : [39.5, -98.35];
+  
+  // For Ojas Mediratta (Atlanta-Chicago route), use focused bounds
+  const isOjasRoute = truck?.driverName === "Ojas Mediratta" || truckId === "LF-101";
+  const center: LatLngTuple = isOjasRoute ? [37.5, -85.0] : (latest ? [latest.lat, latest.lng] : [39.5, -98.35]);
   const focusBounds = useMemo<LatLngBoundsExpression | undefined>(() => {
+    if (isOjasRoute) {
+      return ATLANTA_CHICAGO_BOUNDS;
+    }
     if (!latest) return undefined;
     const latPad = 2;
     const lngPad = 3;
@@ -310,8 +338,8 @@ export default function TruckDetail() {
       [latest.lat - latPad, latest.lng - lngPad],
       [latest.lat + latPad, latest.lng + lngPad],
     ] as LatLngBoundsExpression;
-  }, [latest]);
-  const mapKey = latest ? `${truckId}-${latest.timestamp}` : "no-data";
+  }, [latest, isOjasRoute]);
+  const mapKey = isOjasRoute ? `${truckId}-atlanta-chicago` : (latest ? `${truckId}-${latest.timestamp}` : "no-data");
 
   // Generate pre-populated data for realistic baseline
   const generatePrePopulatedData = useMemo<AnalysisPoint[]>(() => {
@@ -589,11 +617,54 @@ export default function TruckDetail() {
                       url={mapTileUrl}
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     />
+                    
+                    {/* Main Atlanta-Chicago route for Ojas Mediratta */}
+                    {isOjasRoute && (
+                      <>
+                        {/* Main route line */}
+                        <Polyline
+                          positions={ATLANTA_CHICAGO_ROUTE}
+                          pathOptions={{
+                            color: "#06b6d4",
+                            weight: 4,
+                            opacity: 0.8,
+                            lineCap: "round",
+                          }}
+                        />
+                        
+                        {/* Start and end markers */}
+                        {ROUTE_MARKERS.map((marker) => (
+                          <CircleMarker
+                            key={marker.name}
+                            center={marker.coords}
+                            radius={marker.type === "start" ? 8 : 10}
+                            pathOptions={{
+                              color: marker.type === "start" ? "#10b981" : "#ef4444",
+                              fillColor: marker.type === "start" ? "#10b981" : "#ef4444",
+                              fillOpacity: 0.9,
+                              weight: 3,
+                            }}
+                          >
+                            <LeafletTooltip permanent direction="top" offset={[0, -12]} className="route-marker-label">
+                              <span className="font-medium">
+                                {marker.name.split(', ')[0]}
+                              </span>
+                            </LeafletTooltip>
+                          </CircleMarker>
+                        ))}
+                      </>
+                    )}
+                    
+                    {/* Driver status colored segments (overlay on top of main route) */}
                     {coloredSegments.map((seg, idx) => (
                       <Polyline
                         key={`${seg.key}-${idx}`}
                         positions={seg.pts}
-                        pathOptions={{ color: seg.color, weight: 5, opacity: 0.85 }}
+                        pathOptions={{ 
+                          color: seg.color, 
+                          weight: isOjasRoute ? 6 : 5, 
+                          opacity: isOjasRoute ? 0.9 : 0.85 
+                        }}
                       />
                     ))}
                   </MapContainer>
