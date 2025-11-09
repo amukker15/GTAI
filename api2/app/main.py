@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
 import os
 import tempfile
+from collections import OrderedDict
+from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
+from threading import Lock, Thread
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 from starlette.concurrency import run_in_threadpool
 
 from .analyzer import WindowAnalyzer
 from .models import (
+    AnalysisSummary,
     HeadPoseResponse,
     HRSimResponse,
     HRVSimResponse,
@@ -28,6 +35,7 @@ from .utils import parse_timestamp
 from .state_classifier import DriverStateClassifier
 from .state_store import GLOBAL_STATE_STORE
 from .sim_vitals import VitalsSimulator
+from .video import VideoWindowExtractor
 from . import snowflake_db
 
 app = FastAPI(
@@ -52,6 +60,160 @@ app.add_middleware(
 analyzer = WindowAnalyzer()
 state_classifier = DriverStateClassifier()
 vitals_simulator = VitalsSimulator()
+
+ANALYSIS_CACHE_MAX = int(os.getenv("ANALYSIS_CACHE_MAX", "256"))
+_analysis_cache: "OrderedDict[str, AnalysisSummary]" = OrderedDict()
+_cache_lock = Lock()
+_warmers_inflight: set[str] = set()
+_warmers_lock = Lock()
+BASE_DIR = Path(__file__).resolve().parents[1]
+CACHE_DIR = Path(os.getenv("ANALYSIS_CACHE_DIR", BASE_DIR / ".analysis_cache"))
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _video_signature(video_path: Path) -> str:
+    try:
+        stat = video_path.stat()
+        return f"{video_path.resolve()}::{stat.st_mtime}:{stat.st_size}"
+    except FileNotFoundError:
+        return str(video_path.resolve())
+
+
+def _timestamp_token(timestamp_seconds: float) -> str:
+    return f"{round(float(timestamp_seconds), 3):.3f}"
+
+
+def _cache_file_path(signature: str) -> Path:
+    digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
+    return CACHE_DIR / f"{digest}.json"
+
+
+def _cache_key(signature: str, timestamp_token: str) -> str:
+    return f"{signature}::{timestamp_token}"
+
+
+def _summary_to_record(summary: AnalysisSummary) -> dict:
+    data = asdict(summary)
+    ts_value = summary.ts_end_iso
+    if isinstance(ts_value, datetime):
+        data["ts_end_iso"] = ts_value.isoformat()
+    else:
+        data["ts_end_iso"] = str(ts_value)
+    return data
+
+
+def _record_to_summary(record: dict) -> AnalysisSummary:
+    payload = record.copy()
+    ts_value = payload.get("ts_end_iso")
+    if isinstance(ts_value, str):
+        payload["ts_end_iso"] = datetime.fromisoformat(ts_value)
+    return AnalysisSummary(**payload)
+
+
+def _persist_cache_entry(signature: str, timestamp_token: str, summary: AnalysisSummary):
+    cache_file = _cache_file_path(signature)
+    entries = {}
+    if cache_file.exists():
+        try:
+            with cache_file.open("r", encoding="utf-8") as existing:
+                payload = json.load(existing)
+                entries = payload.get("entries", {})
+        except Exception as exc:
+            print(f"[Cache] Failed to read cache file {cache_file}: {exc}")
+            entries = {}
+    entries[timestamp_token] = _summary_to_record(summary)
+    tmp_path = cache_file.with_suffix(".tmp")
+    payload = {"video_signature": signature, "entries": entries}
+    with tmp_path.open("w", encoding="utf-8") as tmp:
+        json.dump(payload, tmp)
+    tmp_path.replace(cache_file)
+
+
+def _set_cache_entry(signature: str, timestamp_token: str, summary: AnalysisSummary, persist: bool = True):
+    cache_key = _cache_key(signature, timestamp_token)
+    clone = copy.deepcopy(summary)
+    with _cache_lock:
+        _analysis_cache[cache_key] = clone
+        _analysis_cache.move_to_end(cache_key)
+        while len(_analysis_cache) > ANALYSIS_CACHE_MAX:
+            _analysis_cache.popitem(last=False)
+    if persist:
+        _persist_cache_entry(signature, timestamp_token, clone)
+    return copy.deepcopy(clone)
+
+
+def _load_summary_from_disk(signature: str, timestamp_token: str):
+    cache_file = _cache_file_path(signature)
+    if not cache_file.exists():
+        return None
+    try:
+        with cache_file.open("r", encoding="utf-8") as cached:
+            payload = json.load(cached)
+    except Exception as exc:
+        print(f"[Cache] Failed to load disk cache {cache_file}: {exc}")
+        return None
+    record = payload.get("entries", {}).get(timestamp_token)
+    if not record:
+        return None
+    summary = _record_to_summary(record)
+    _set_cache_entry(signature, timestamp_token, summary, persist=False)
+    return copy.deepcopy(summary)
+
+
+def _get_cached_summary(video_path: Path, timestamp_seconds: float):
+    signature = _video_signature(video_path)
+    token = _timestamp_token(timestamp_seconds)
+    cache_key = _cache_key(signature, token)
+    with _cache_lock:
+        summary = _analysis_cache.get(cache_key)
+        if summary is not None:
+            _analysis_cache.move_to_end(cache_key)
+            return copy.deepcopy(summary)
+    return _load_summary_from_disk(signature, token)
+
+
+def _store_cached_summary(video_path: Path, timestamp_seconds: float, summary):
+    signature = _video_signature(video_path)
+    token = _timestamp_token(timestamp_seconds)
+    _set_cache_entry(signature, token, summary, persist=True)
+
+
+def _warm_cache_for_video(video_path: Path):
+    try:
+        extractor = VideoWindowExtractor(video_path)
+        duration = extractor.meta.duration or 0
+    except Exception as exc:
+        print(f"[CacheWarm] Failed to inspect video {video_path}: {exc}")
+        return
+
+    ts = 30.0
+    while ts <= max(duration, 0):
+        existing = _get_cached_summary(video_path, ts)
+        if existing is None:
+            try:
+                summary = analyzer.analyze(video_path, ts, None, None)
+                _store_cached_summary(video_path, ts, summary)
+            except Exception as exc:
+                print(f"[CacheWarm] Failed to precompute {video_path} @ {ts}s: {exc}")
+                break
+        ts += 30.0
+
+
+def _ensure_cache_warm(video_path: Path):
+    signature = _video_signature(video_path)
+    with _warmers_lock:
+        if signature in _warmers_inflight:
+            return
+        _warmers_inflight.add(signature)
+
+    def _worker():
+        try:
+            _warm_cache_for_video(video_path)
+        finally:
+            with _warmers_lock:
+                _warmers_inflight.discard(signature)
+
+    Thread(target=_worker, daemon=True).start()
 
 
 def save_analysis_to_snowflake(summary, session_id: str | None, driver_id: str | None):
@@ -122,10 +284,16 @@ async def analyze_request(
         video_path = find_video_file()
         if not video_path:
             raise HTTPException(
-                status_code=404, 
+                status_code=404,
                 detail="No video file found in footage directory and no video uploaded"
             )
-        
+
+        _ensure_cache_warm(video_path)
+
+        cached = _get_cached_summary(video_path, ts_seconds)
+        if cached:
+            return cached
+
         try:
             summary = await run_in_threadpool(
                 analyzer.analyze,
@@ -136,6 +304,8 @@ async def analyze_request(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        _store_cached_summary(video_path, ts_seconds, summary)
         return summary
     else:
         # Original logic for uploaded video

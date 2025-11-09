@@ -40,7 +40,10 @@ type AnalysisPoint = AnalysisResult & {
   yawnDutyPercent: number;
   droopDutyPercent: number;
   state: DriverStatus;
+  stateLabel: string;
   stateReason: string;
+  stateConfidence?: string;
+  riskScore?: number;
   dimPoint: boolean;
 };
 
@@ -311,7 +314,11 @@ export default function TruckDetail() {
     () =>
       analysisResults.map((result, index) => {
         const bucketIndex = index + 1;
-        const { state, reason } = assessDriverState(result);
+        const fallback = assessDriverState(result);
+        const resolvedState = result.driver_state ?? fallback.state;
+        const resolvedLabel = result.driver_state_label ?? STATE_LABEL[resolvedState];
+        const resolvedReason = result.driver_state_reason ?? fallback.reason;
+
         return {
           ...result,
           tsLabel: formatClockLabel(result.ts_end),
@@ -320,8 +327,11 @@ export default function TruckDetail() {
           perclosPercent: Number((result.perclos_30s * 100).toFixed(1)),
           yawnDutyPercent: Number((result.yawn_duty_30s * 100).toFixed(1)),
           droopDutyPercent: Number((result.droop_duty_30s * 100).toFixed(1)),
-          state,
-          stateReason: reason,
+          state: resolvedState,
+          stateLabel: resolvedLabel,
+          stateReason: resolvedReason,
+          stateConfidence: result.driver_state_confidence,
+          riskScore: result.driver_risk_score,
           dimPoint: hasQualityWarning(result),
         };
       }),
@@ -366,11 +376,13 @@ export default function TruckDetail() {
   }, [timelinePoints, truckId]);
 
   // Status text
-  const statusText = useMemo<DriverStatus>(() => {
+  const fallbackStatus = useMemo<DriverStatus>(() => {
     if (!thresholds) return "OK";
     return computeStatus(latest, history, thresholds);
   }, [latest, history, thresholds]);
+  const statusText = latestPoint?.state ?? fallbackStatus;
   const statusColor = statusToColor(statusText);
+  const statusLabel = latestPoint?.stateLabel ?? (statusText === "OK" ? "Lucid" : statusText === "DROWSY_SOON" ? "Drowsy" : "Asleep");
   const mapTileUrl = darkMode
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
@@ -475,7 +487,7 @@ export default function TruckDetail() {
                   className="inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                   style={{ backgroundColor: statusColor }}
                 >
-                  {statusText === "OK" ? "Lucid" : statusText === "DROWSY_SOON" ? "Warning" : statusText === "ASLEEP" ? "Critical" : statusText}
+                  {statusLabel}
                 </span>
               </div>
             </div>
@@ -547,7 +559,7 @@ export default function TruckDetail() {
                 <div className="text-right">
                   <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Latest state</p>
                   <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    {latestPoint ? STATE_LABEL[latestPoint.state] : "Awaiting signal"}
+                    {latestPoint ? latestPoint.stateLabel : "Awaiting signal"}
                   </p>
                 </div>
               </div>
@@ -733,7 +745,7 @@ export default function TruckDetail() {
                                   Video {a.timeInterval}
                                 </span>
                                 <span className="text-xs font-semibold text-slate-900 dark:text-white">
-                                  {isCritical ? "Critical" : "Warning"}
+                                  {isCritical ? "Asleep" : "Drowsy"}
                                 </span>
                               </div>
                               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">

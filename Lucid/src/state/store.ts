@@ -1,6 +1,72 @@
 import { create } from "zustand";
 import type { Alert, Telemetry, Thresholds, Truck } from "../lib/types";
 import { getAlerts, getTelemetry, getThresholds, saveThresholds, getTrucks } from "../api/mock";
+import type { DriverStatus } from "../lib/status";
+
+type StateReasonPayload = {
+  signal: string;
+  value: number | string | null;
+  threshold: number | string | null;
+  relation: string;
+};
+
+type StateApiResponse = {
+  ts_end: string;
+  session_id: string;
+  driver_id: string;
+  state: string;
+  risk_score: number;
+  state_confidence: string;
+  reasons?: StateReasonPayload[];
+};
+
+const SIGNAL_LABELS: Record<string, string> = {
+  perclos_30s: "PERCLOS",
+  yawn_duty_30s: "Yawning duty",
+  yawn_count_30s: "Yawns",
+  droop_duty_30s: "Head droop",
+  droop_time_30s: "Head droop time",
+  pitchdown_max_30s: "Head pitch max",
+  pitchdown_avg_30s: "Head pitch avg",
+  pitch_thresh_Tp: "Head threshold",
+  confidence: "Confidence",
+  fps: "FPS",
+};
+
+const PERCENT_SIGNALS = new Set(["perclos_30s", "yawn_duty_30s", "droop_duty_30s"]);
+
+const mapServerStateToDriverStatus = (state: string | undefined | null): DriverStatus | undefined => {
+  if (!state) return undefined;
+  const normalized = state.toLowerCase();
+  if (normalized === "lucid") return "OK";
+  if (normalized === "drowsy") return "DROWSY_SOON";
+  if (normalized === "asleep") return "ASLEEP";
+  return undefined;
+};
+
+const formatReasonValue = (signal: string, value: number | string | null | undefined) => {
+  if (value === null || value === undefined) return "—";
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (Number.isFinite(numeric) && PERCENT_SIGNALS.has(signal)) {
+    return `${(numeric * 100).toFixed(1)}%`;
+  }
+  if (Number.isFinite(numeric)) {
+    return numeric.toFixed(2);
+  }
+  return String(value);
+};
+
+const formatStateReason = (reasons?: StateReasonPayload[]): string | undefined => {
+  if (!reasons?.length) return undefined;
+  const primary = reasons[0];
+  const label = SIGNAL_LABELS[primary.signal] ?? primary.signal;
+  if (primary.relation === "missing") {
+    return `${label} data missing`;
+  }
+  const valueText = formatReasonValue(primary.signal, primary.value);
+  const thresholdText = formatReasonValue(primary.signal, primary.threshold);
+  return `${label} ${valueText} ${primary.relation} ${thresholdText}`;
+};
 
 type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
 
@@ -22,6 +88,11 @@ export type AnalysisResult = {
   yawn_peak_30s: number;
   confidence: string;
   fps: number;
+  driver_state?: DriverStatus;
+  driver_state_label?: string;
+  driver_state_reason?: string;
+  driver_state_confidence?: string;
+  driver_risk_score?: number;
 };
 
 type Store = {
@@ -47,7 +118,7 @@ type Store = {
   startGlobalTimer: () => void;
   stopGlobalTimer: () => void;
   resetGlobalTimer: () => Promise<void>;
-  performVideoAnalysis: () => Promise<void>;
+  performVideoAnalysis: (targetTimestamp?: number) => Promise<void>;
   updateElapsedTime: (elapsed: number) => void;
   fetchVideoInfo: () => Promise<void>;
 };
@@ -133,20 +204,21 @@ export const useStore = create<Store>((set, get) => ({
       const now = Date.now();
       const elapsed = Math.floor((now - get().appStartTime) / 1000);
       const sinceLast = get().lastApiCallTime > 0 ? Math.floor((now - get().lastApiCallTime) / 1000) : elapsed;
-      const videoLimit = get().videoDuration || 64;
-      const clampedElapsed = Math.min(elapsed, videoLimit);
+      const videoLimit = get().videoDuration;
 
       set({ 
-        globalElapsedTime: clampedElapsed,
+        globalElapsedTime: elapsed,
         secondsSinceLastApiCall: sinceLast
       });
 
       // Trigger API call every 30 seconds
-      if (clampedElapsed > 0 && clampedElapsed % 30 === 0 && clampedElapsed <= videoLimit) {
-        get().performVideoAnalysis();
+      if (elapsed > 0 && elapsed % 30 === 0) {
+        if (!videoLimit || elapsed <= videoLimit) {
+          get().performVideoAnalysis(elapsed);
+        }
       }
 
-      if (clampedElapsed >= videoLimit) {
+      if (videoLimit && elapsed >= videoLimit) {
         get().stopGlobalTimer();
       }
     }, 1000);
@@ -204,12 +276,11 @@ export const useStore = create<Store>((set, get) => ({
     set({ globalElapsedTime: elapsed });
   },
 
-  performVideoAnalysis: async () => {
+  performVideoAnalysis: async (targetTimestamp?: number) => {
     try {
       const state = get();
-      const currentTime = state.globalElapsedTime;
+      const currentTime = typeof targetTimestamp === "number" ? targetTimestamp : state.globalElapsedTime;
       const sessionId = state.currentSessionId;
-      const videoDuration = state.videoDuration || 64;
 
       // Prevent multiple simultaneous analysis calls
       if (state.isAnalysisRunning) {
@@ -217,15 +288,14 @@ export const useStore = create<Store>((set, get) => ({
         return;
       }
 
-      if (currentTime === 0 || currentTime > videoDuration) {
+      if (currentTime <= 0) {
         return;
       }
 
       // Set analysis running flag
       set({ isAnalysisRunning: true });
 
-      // Clamp timestamp to video duration and avoid wrapping
-      const videoTimestamp = Math.min(currentTime, Math.max(videoDuration - 0.01, 0));
+      const videoTimestamp = currentTime;
 
       console.log(`[VideoAnalysis] Performing analysis at ${currentTime}s (video time: ${videoTimestamp}s)`);
       
@@ -249,10 +319,65 @@ export const useStore = create<Store>((set, get) => ({
       
       const result: AnalysisResult = await analysisResponse.json();
       console.log(`[VideoAnalysis] Analysis complete for ${currentTime}s (video: ${videoTimestamp}s):`, result);
-      
+
+      let driverState: DriverStatus | undefined;
+      let driverStateLabel: string | undefined;
+      let driverStateReason: string | undefined;
+      let driverStateConfidence: string | undefined;
+      let driverRiskScore: number | undefined;
+
+      try {
+        const statePayload = {
+          ts_end: result.ts_end,
+          session_id: result.session_id ?? sessionId,
+          driver_id: result.driver_id ?? "demo_driver",
+          perclos_30s: result.perclos_30s,
+          ear_thresh_T: result.ear_thresh_T,
+          pitchdown_avg_30s: result.pitchdown_avg_30s,
+          pitchdown_max_30s: result.pitchdown_max_30s,
+          droop_time_30s: result.droop_time_30s,
+          droop_duty_30s: result.droop_duty_30s,
+          pitch_thresh_Tp: result.pitch_thresh_Tp,
+          yawn_count_30s: result.yawn_count_30s,
+          yawn_time_30s: result.yawn_time_30s,
+          yawn_duty_30s: result.yawn_duty_30s,
+          yawn_peak_30s: result.yawn_peak_30s,
+          confidence: result.confidence,
+          fps: result.fps,
+        };
+
+        const stateResponse = await fetch("http://localhost:8000/v1/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(statePayload),
+        });
+
+        if (stateResponse.ok) {
+          const stateData: StateApiResponse = await stateResponse.json();
+          driverStateLabel = stateData.state;
+          driverState = mapServerStateToDriverStatus(stateData.state);
+          driverStateReason = formatStateReason(stateData.reasons);
+          driverStateConfidence = stateData.state_confidence;
+          driverRiskScore = stateData.risk_score;
+        } else {
+          console.warn("[VideoAnalysis] State endpoint responded with status", stateResponse.status);
+        }
+      } catch (stateError) {
+        console.warn("[VideoAnalysis] Failed to classify driver state:", stateError);
+      }
+
+      const enhancedResult: AnalysisResult = {
+        ...result,
+        driver_state: driverState,
+        driver_state_label: driverStateLabel,
+        driver_state_reason: driverStateReason,
+        driver_state_confidence: driverStateConfidence,
+        driver_risk_score: driverRiskScore,
+      };
+
       // Update store with new result
       set((state) => ({
-        analysisResults: [...state.analysisResults, result],
+        analysisResults: [...state.analysisResults, enhancedResult],
         lastApiCallTime: Date.now(),
         secondsSinceLastApiCall: 0,
         isAnalysisRunning: false

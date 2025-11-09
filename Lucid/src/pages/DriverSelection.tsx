@@ -17,6 +17,7 @@ export default function DriverSelection() {
 
   // Get latest analysis for displaying current status
   const latestAnalysis = analysisResults[analysisResults.length - 1];
+  const consensusStatus = latestAnalysis?.driver_state;
 
   const getTruckStatus = (truckId: string) => {
     if (!thresholds) return "OK";
@@ -42,7 +43,7 @@ export default function DriverSelection() {
       return (
         <span className={`${baseClasses} border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200`}>
           <AlertTriangle className="h-3 w-3" />
-          Warning
+          Drowsy
         </span>
       );
     }
@@ -160,7 +161,7 @@ export default function DriverSelection() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredTrucks.map((truck) => {
-              const status = getTruckStatus(truck.id);
+              const status = consensusStatus ?? getTruckStatus(truck.id);
               const alert = alerts.find((item) => item.truckId === truck.id && item.status !== "OK");
               const history = telemetryByTruckId[truck.id] || [];
               const latest = history[history.length - 1];
