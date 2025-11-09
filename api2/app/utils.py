@@ -104,7 +104,7 @@ def window_bounds(duration: float | None, ts_end: float, window_seconds: float) 
     
     if start < 0:
         # For demo purposes, when we don't have enough history, start from beginning
-        # This handles the video loop case where timestamps < 30s are requested
+        # This handles the video loop case where timestamps < 15s are requested
         print(f"[WindowBounds] Adjusting window for timestamp {ts_end}s: using 0s-{ts_end}s instead of {start}s-{ts_end}s")
         start = 0.0
         # If the available window is too short, extend to minimum viable window

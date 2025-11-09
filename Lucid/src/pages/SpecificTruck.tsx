@@ -90,19 +90,19 @@ const assessDriverState = (sample: AnalysisResult | undefined): StateAssessment 
     return { state: "OK", reason: "Awaiting data" };
   }
 
-  const perclosPct = sample.perclos_30s * 100;
-  const yawDutyPct = sample.yawn_duty_30s * 100;
-  const droopDutyPct = sample.droop_duty_30s * 100;
+  const perclosPct = sample.perclos_15s * 100;
+  const yawDutyPct = sample.yawn_duty_15s * 100;
+  const droopDutyPct = sample.droop_duty_15s * 100;
   const pitchThreshold = sample.pitch_thresh_Tp;
 
-  const highPerclos = sample.perclos_30s >= 0.6;
-  const medPerclos = sample.perclos_30s >= 0.4;
-  const severeHeadDrop = sample.pitchdown_avg_30s >= pitchThreshold + 5 || sample.pitchdown_max_30s >= pitchThreshold + 8;
-  const headTrending = sample.pitchdown_avg_30s >= pitchThreshold || sample.pitchdown_max_30s >= pitchThreshold + 4;
-  const yawOverload = sample.yawn_duty_30s >= 0.55;
-  const yawElevated = sample.yawn_count_30s >= 2 || sample.yawn_duty_30s >= 0.35;
-  const droopHeavy = sample.droop_time_30s >= 18 || droopDutyPct >= 60;
-  const droopElevated = sample.droop_time_30s >= 12 || droopDutyPct >= 40;
+  const highPerclos = sample.perclos_15s >= 0.6;
+  const medPerclos = sample.perclos_15s >= 0.4;
+  const severeHeadDrop = sample.pitchdown_avg_15s >= pitchThreshold + 5 || sample.pitchdown_max_15s >= pitchThreshold + 8;
+  const headTrending = sample.pitchdown_avg_15s >= pitchThreshold || sample.pitchdown_max_15s >= pitchThreshold + 4;
+  const yawOverload = sample.yawn_duty_15s >= 0.55;
+  const yawElevated = sample.yawn_count_15s >= 1 || sample.yawn_duty_15s >= 0.35;
+  const droopHeavy = sample.droop_time_15s >= 9 || droopDutyPct >= 60;
+  const droopElevated = sample.droop_time_15s >= 6 || droopDutyPct >= 40;
 
   if (highPerclos) {
     return { state: "ASLEEP", reason: `High fatigue detected (PERCLOS ${perclosPct.toFixed(1)}%)` };
@@ -111,7 +111,7 @@ const assessDriverState = (sample: AnalysisResult | undefined): StateAssessment 
   if (severeHeadDrop) {
     return {
       state: "ASLEEP",
-      reason: `Head drop beyond threshold (${sample.pitchdown_avg_30s.toFixed(1)}° vs ${pitchThreshold.toFixed(1)}°)`,
+      reason: `Head drop beyond threshold (${sample.pitchdown_avg_15s.toFixed(1)}° vs ${pitchThreshold.toFixed(1)}°)`,
     };
   }
 
@@ -125,7 +125,7 @@ const assessDriverState = (sample: AnalysisResult | undefined): StateAssessment 
   if (droopHeavy) {
     return {
       state: "ASLEEP",
-      reason: `Extended head droop (${sample.droop_time_30s.toFixed(1)}s down)`,
+      reason: `Extended head droop (${sample.droop_time_15s.toFixed(1)}s down)`,
     };
   }
 
@@ -136,14 +136,14 @@ const assessDriverState = (sample: AnalysisResult | undefined): StateAssessment 
   if (yawElevated) {
     return {
       state: "DROWSY_SOON",
-      reason: `Frequent yawning (${sample.yawn_count_30s} in 30s)`,
+      reason: `Frequent yawning (${sample.yawn_count_15s} in 15s)`,
     };
   }
 
   if (headTrending || droopElevated) {
     return {
       state: "DROWSY_SOON",
-      reason: `Head pose nearing threshold (avg ${sample.pitchdown_avg_30s.toFixed(1)}°)`,
+      reason: `Head pose nearing threshold (avg ${sample.pitchdown_avg_15s.toFixed(1)}°)`,
     };
   }
 
@@ -164,7 +164,7 @@ const PerclosTooltip = ({ active, payload }: TooltipProps) => {
       <div className="text-base font-semibold text-slate-900 dark:text-white">{point.perclosPercent.toFixed(1)}%</div>
       <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
         <p>EAR threshold: {point.ear_thresh_T.toFixed(3)}</p>
-        <p>PERCLOS ratio: {point.perclos_30s.toFixed(3)}</p>
+        <p>PERCLOS ratio: {point.perclos_15s.toFixed(3)}</p>
         <p>Confidence: {point.confidence} · FPS: {point.fps}</p>
         <p>Bucket: {point.intervalLabel}</p>
       </div>
@@ -178,11 +178,11 @@ const HeadPoseTooltip = ({ active, payload }: TooltipProps) => {
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
       <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
-      <div className="text-base font-semibold text-slate-900 dark:text-white">{point.pitchdown_avg_30s.toFixed(1)}° avg</div>
+      <div className="text-base font-semibold text-slate-900 dark:text-white">{point.pitchdown_avg_15s.toFixed(1)}° avg</div>
       <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-        <p>Max droop: {point.pitchdown_max_30s.toFixed(1)}°</p>
+        <p>Max droop: {point.pitchdown_max_15s.toFixed(1)}°</p>
         <p>Threshold: {point.pitch_thresh_Tp.toFixed(1)}°</p>
-        <p>Droop duty: {(point.droop_duty_30s * 100).toFixed(1)}% · Droop time: {point.droop_time_30s.toFixed(1)}s</p>
+        <p>Droop duty: {(point.droop_duty_15s * 100).toFixed(1)}% · Droop time: {point.droop_time_15s.toFixed(1)}s</p>
         <p>Confidence: {point.confidence} · FPS: {point.fps}</p>
       </div>
     </div>
@@ -197,9 +197,9 @@ const YawningTooltip = ({ active, payload }: TooltipProps) => {
       <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
       <div className="text-base font-semibold text-slate-900 dark:text-white">{point.yawnDutyPercent.toFixed(1)}% duty</div>
       <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-        <p>Yawn count: {point.yawn_count_30s}</p>
-        <p>Active yawning: {point.yawn_time_30s.toFixed(1)}s</p>
-        {Number.isFinite(point.yawn_peak_30s) && <p>Peak openness: {point.yawn_peak_30s.toFixed(3)}</p>}
+        <p>Yawn count: {point.yawn_count_15s}</p>
+        <p>Active yawning: {point.yawn_time_15s.toFixed(1)}s</p>
+        {Number.isFinite(point.yawn_peak_15s) && <p>Peak openness: {point.yawn_peak_15s.toFixed(3)}</p>}
         <p>Bucket: {point.intervalLabel}</p>
       </div>
     </div>
@@ -233,7 +233,7 @@ const StatusDot = ({ cx, cy, payload }: DotPropsLite) => {
 
 const HeadPoseDot = ({ cx, cy, payload }: DotPropsLite) => {
   if (cx === undefined || cy === undefined || !payload) return null;
-  const exceeds = payload.pitchdown_max_30s >= payload.pitch_thresh_Tp;
+  const exceeds = payload.pitchdown_max_15s >= payload.pitch_thresh_Tp;
   if (exceeds) {
     const size = 6;
     return (
@@ -279,7 +279,7 @@ const YawnCountLabel = ({ x, y, value }: LabelPropsLite) => {
   );
 };
 
-type ChartTab = 'perclos' | 'headpose' | 'yawning';
+type ChartTab = 'perclos' | 'headpose' | 'yawning' | 'heartrate' | 'hrv';
 
 export default function TruckDetail() {
   const { truckId = "" } = useParams();
@@ -313,10 +313,69 @@ export default function TruckDetail() {
   }, [latest]);
   const mapKey = latest ? `${truckId}-${latest.timestamp}` : "no-data";
 
+  // Generate pre-populated data for realistic baseline
+  const generatePrePopulatedData = useMemo<AnalysisPoint[]>(() => {
+    const baseTime = Date.now();
+    const prePopulatedData: AnalysisPoint[] = [];
+    
+    // Create 4 data points for -60s, -45s, -30s, -15s
+    for (let i = 0; i < 4; i++) {
+      const timeOffset = -(60 - (i * 15)); // -60, -45, -30, -15
+      const timestamp = new Date(baseTime + (timeOffset * 1000));
+      const bucketIndex = i + 1;
+      
+      // Generate realistic "Lucid" driving data
+      const perclos = 7 + Math.random() * 2; // 7-9%
+      const headPose = 30 + Math.random() * 10; // 30-40 degrees
+      const yawnCount = 0; // No yawning for lucid state
+      
+      // Generate realistic HR and HRV for "Lucid" state
+      const heartRate = 70 + Math.random() * 20; // 70-90 bpm for Lucid state
+      const heartRateVariability = 15 + Math.random() * 20; // 15-35 ms for Lucid state
+      
+      const prePopulatedPoint: AnalysisPoint = {
+        ts_end: timestamp.toISOString(),
+        session_id: `prepopulated_session_${i}`,
+        driver_id: "demo_driver",
+        PERCLOS: perclos / 100,
+        perclos_15s: perclos / 100,
+        ear_thresh_T: 0.25,
+        pitchdown_avg_15s: headPose,
+        pitchdown_max_15s: headPose + 2,
+        droop_time_15s: 0.5,
+        droop_duty_15s: 0.03,
+        pitch_thresh_Tp: 45,
+        yawn_count_15s: yawnCount,
+        yawn_time_15s: 0,
+        yawn_duty_15s: 0,
+        yawn_peak_15s: 0,
+        confidence: "OK",
+        fps: 30,
+        hr_bpm: heartRate,
+        hrv_rmssd_ms: heartRateVariability,
+        tsLabel: formatClockLabel(timestamp.toISOString()),
+        bucketIndex,
+        intervalLabel: formatInterval(bucketIndex),
+        perclosPercent: Number(perclos.toFixed(1)),
+        yawnDutyPercent: 0,
+        droopDutyPercent: 3,
+        state: "OK" as DriverStatus,
+        stateLabel: "Lucid",
+        stateReason: "Vitals within safe thresholds",
+        dimPoint: false,
+      };
+      
+      prePopulatedData.push(prePopulatedPoint);
+    }
+    
+    return prePopulatedData;
+  }, []);
+
   const timelinePoints = useMemo<AnalysisPoint[]>(
-    () =>
-      analysisResults.map((result, index) => {
-        const bucketIndex = index + 1;
+    () => {
+      // Process real analysis results
+      const realDataPoints = analysisResults.map((result, index) => {
+        const bucketIndex = index + 5; // Start from 5 to account for 4 pre-populated points
         const fallback = assessDriverState(result);
         const resolvedState = result.driver_state ?? fallback.state;
         const resolvedLabel = result.driver_state_label ?? STATE_LABEL[resolvedState];
@@ -327,9 +386,9 @@ export default function TruckDetail() {
           tsLabel: formatClockLabel(result.ts_end),
           bucketIndex,
           intervalLabel: formatInterval(bucketIndex),
-          perclosPercent: Number((result.perclos_30s * 100).toFixed(1)),
-          yawnDutyPercent: Number((result.yawn_duty_30s * 100).toFixed(1)),
-          droopDutyPercent: Number((result.droop_duty_30s * 100).toFixed(1)),
+          perclosPercent: Number((result.perclos_15s * 100).toFixed(1)),
+          yawnDutyPercent: Number((result.yawn_duty_15s * 100).toFixed(1)),
+          droopDutyPercent: Number((result.droop_duty_15s * 100).toFixed(1)),
           state: resolvedState,
           stateLabel: resolvedLabel,
           stateReason: resolvedReason,
@@ -337,8 +396,12 @@ export default function TruckDetail() {
           riskScore: result.driver_risk_score,
           dimPoint: hasQualityWarning(result),
         };
-      }),
-    [analysisResults]
+      });
+
+      // Combine pre-populated data with real data
+      return [...generatePrePopulatedData, ...realDataPoints];
+    },
+    [analysisResults, generatePrePopulatedData]
   );
 
   const latestPoint = timelinePoints[timelinePoints.length - 1];
@@ -396,26 +459,19 @@ export default function TruckDetail() {
 
   // Use latest analysis results instead of mock telemetry
   const perclosPercent = latestPoint ? Math.round(latestPoint.perclosPercent) : null;
-  const headDownDegrees = latestPoint?.pitchdown_avg_30s ?? null;
-  const yawnCount = latestPoint?.yawn_count_30s ?? null;
+  const headDownDegrees = latestPoint?.pitchdown_avg_15s ?? null;
+  const yawnCount = latestPoint?.yawn_count_15s ?? null;
   
-  // Simulate heart rate and HRV based on analysis data
-  const baseHeartRate = 72;
-  const heartRate = latestPoint 
-    ? Math.round(baseHeartRate + (latestPoint.perclos_30s * 20)) // Higher PERCLOS = higher HR
-    : null;
-  
-  const baseHRV = 45;
-  const hrvRmssd = latestPoint 
-    ? Math.round(baseHRV - (latestPoint.perclos_30s * 15)) // Higher PERCLOS = lower HRV
-    : null;
+  // Use real heart rate and HRV data from API
+  const heartRate = latestPoint?.hr_bpm ? Math.round(latestPoint.hr_bpm) : null;
+  const hrvRmssd = latestPoint?.hrv_rmssd_ms ? Math.round(latestPoint.hrv_rmssd_ms) : null;
 
   const biometrics = [
     {
       key: "perclos",
       label: "Fatigue (PERCLOS)",
       value: perclosPercent !== null ? `${perclosPercent}%` : "—",
-      helper: "Latest 30s window",
+      helper: "Latest 15s window",
       progress: perclosPercent,
     },
     {
@@ -437,8 +493,8 @@ export default function TruckDetail() {
       helper: "Inclination vs forward",
     },
     {
-      key: "yawnCount30s",
-      label: "Yawns / 30s",
+      key: "yawnCount15s",
+      label: "Yawns / 15s",
       value: yawnCount !== null ? yawnCount.toString() : "—",
       helper: "Recent interval",
     },
@@ -453,7 +509,7 @@ export default function TruckDetail() {
   const renderChartPlaceholder = () => (
     <div className="flex h-full w-full items-center justify-center text-slate-500 dark:text-slate-400">
       <div className="text-center">
-        <div className="animate-pulse">Waiting for first 30-second analysis</div>
+        <div className="animate-pulse">Waiting for first 15-second analysis</div>
         <div className="text-xs mt-1">Next bucket arrives automatically</div>
       </div>
     </div>
@@ -556,7 +612,7 @@ export default function TruckDetail() {
                   </span>
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Live biometrics</p>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">New bucket every 30s</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">New bucket every 15s</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -614,6 +670,36 @@ export default function TruckDetail() {
                       </span>
                     )}
                   </button>
+                  <button
+                    onClick={() => setActiveChartTab('heartrate')}
+                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      activeChartTab === 'heartrate'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    Heart Rate
+                    {heartRate !== null && activeChartTab === 'heartrate' && (
+                      <span className="ml-2 px-2 py-0.5 text-xs bg-white/70 rounded-full dark:bg-slate-900/70">
+                        {heartRate} bpm
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveChartTab('hrv')}
+                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      activeChartTab === 'hrv'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    HRV
+                    {hrvRmssd !== null && activeChartTab === 'hrv' && (
+                      <span className="ml-2 px-2 py-0.5 text-xs bg-white/70 rounded-full dark:bg-slate-900/70">
+                        {hrvRmssd} ms
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {/* Chart Container */}
@@ -624,7 +710,7 @@ export default function TruckDetail() {
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">PERCLOS chart</p>
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Eye closure · % of last 30s</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Eye closure · % of last 15s</p>
                         </div>
                         <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
                           {perclosPercent !== null ? `${perclosPercent}%` : "—"}
@@ -667,7 +753,7 @@ export default function TruckDetail() {
                         {latestPoint && (
                           <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
-                              Droop time: {latestPoint.droop_time_30s.toFixed(1)}s
+                              Droop time: {latestPoint.droop_time_15s.toFixed(1)}s
                             </span>
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
                               Duty: {latestPoint.droopDutyPercent.toFixed(1)}%
@@ -685,7 +771,7 @@ export default function TruckDetail() {
                               <Tooltip content={<HeadPoseTooltip />} />
                               <Line
                                 type="monotone"
-                                dataKey="pitchdown_avg_30s"
+                                dataKey="pitchdown_avg_15s"
                                 stroke={headPoseColor}
                                 strokeWidth={2}
                                 dot={<HeadPoseDot />}
@@ -739,7 +825,7 @@ export default function TruckDetail() {
                                 isAnimationActive={false}
                               >
                                 <LabelList
-                                  dataKey="yawn_count_30s"
+                                  dataKey="yawn_count_15s"
                                   content={(props: LabelProps) => (
                                     <YawnCountLabel x={props.x} y={props.y} value={props.value as number} />
                                   )}
@@ -751,7 +837,127 @@ export default function TruckDetail() {
                           renderChartPlaceholder()
                         )}
                       </div>
-                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Numbers above each marker show yawns counted in that 30s slice</p>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Numbers above each marker show yawns counted in that 15s slice</p>
+                    </>
+                  )}
+
+                  {/* Heart Rate Chart */}
+                  {activeChartTab === 'heartrate' && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Heart rate chart</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Beats per minute</p>
+                        </div>
+                        <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
+                          {heartRate !== null ? `${heartRate} bpm` : "—"}
+                        </div>
+                      </div>
+                      <div className="h-[280px] w-full">
+                        {timelinePoints.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                              <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                              <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                              <YAxis domain={[45, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}`} width={45} />
+                              <Tooltip content={({ active, payload }) => {
+                                if (!active || !payload?.length) return null;
+                                const point = payload[0].payload;
+                                return (
+                                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
+                                    <div className="text-base font-semibold text-slate-900 dark:text-white">{point.hr_bpm?.toFixed(1)} bpm</div>
+                                    <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+                                      <p>Driver state: {point.stateLabel}</p>
+                                      <p>Confidence: {point.confidence}</p>
+                                      <p>Bucket: {point.intervalLabel}</p>
+                                    </div>
+                                  </div>
+                                );
+                              }} />
+                              <Line
+                                type="monotone"
+                                dataKey="hr_bpm"
+                                stroke="#ef4444"
+                                strokeWidth={2}
+                                dot={({ cx, cy, payload }) => (
+                                  <circle
+                                    cx={cx}
+                                    cy={cy}
+                                    r={4.5}
+                                    fill="#ef4444"
+                                    opacity={payload?.dimPoint ? 0.35 : 0.95}
+                                  />
+                                )}
+                                isAnimationActive={false}
+                              />
+                            </ReLineChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          renderChartPlaceholder()
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Heart rate varies with driver alertness level</p>
+                    </>
+                  )}
+
+                  {/* HRV Chart */}
+                  {activeChartTab === 'hrv' && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">HRV chart</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">RMSSD in milliseconds</p>
+                        </div>
+                        <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
+                          {hrvRmssd !== null ? `${hrvRmssd} ms` : "—"}
+                        </div>
+                      </div>
+                      <div className="h-[280px] w-full">
+                        {timelinePoints.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                              <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                              <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                              <YAxis domain={[10, 120]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}`} width={45} />
+                              <Tooltip content={({ active, payload }) => {
+                                if (!active || !payload?.length) return null;
+                                const point = payload[0].payload;
+                                return (
+                                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 px-3 py-2 shadow-xl">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{point.tsLabel}</div>
+                                    <div className="text-base font-semibold text-slate-900 dark:text-white">{point.hrv_rmssd_ms?.toFixed(1)} ms</div>
+                                    <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+                                      <p>Driver state: {point.stateLabel}</p>
+                                      <p>Confidence: {point.confidence}</p>
+                                      <p>Bucket: {point.intervalLabel}</p>
+                                    </div>
+                                  </div>
+                                );
+                              }} />
+                              <Line
+                                type="monotone"
+                                dataKey="hrv_rmssd_ms"
+                                stroke="#22c55e"
+                                strokeWidth={2}
+                                dot={({ cx, cy, payload }) => (
+                                  <circle
+                                    cx={cx}
+                                    cy={cy}
+                                    r={4.5}
+                                    fill="#22c55e"
+                                    opacity={payload?.dimPoint ? 0.35 : 0.95}
+                                  />
+                                )}
+                                isAnimationActive={false}
+                              />
+                            </ReLineChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          renderChartPlaceholder()
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Higher HRV indicates better autonomic nervous system balance</p>
                     </>
                   )}
                 </div>
@@ -818,7 +1024,7 @@ export default function TruckDetail() {
                             </div>
                             <p className="text-xs text-slate-700 dark:text-slate-200 mb-1">{a.reason}</p>
                             <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                              30s interval: {a.timeInterval}
+                              15s interval: {a.timeInterval}
                             </p>
                           </div>
                         </div>

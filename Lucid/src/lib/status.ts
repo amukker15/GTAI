@@ -11,7 +11,7 @@ export function computeStatus(
   if (!latest) return "OK";
   const overPerclos = latest.perclos >= th.perclosHigh;
   const headDown = latest.headDownDegrees >= th.headDownDegHigh;
-  const yawny = latest.yawnCount30s >= th.yawnCountHigh;
+  const yawny = latest.yawnCount15s >= th.yawnCountHigh;
   const lowHR = latest.heartRate > 0 && latest.heartRate <= th.hrLow;
   const lowHRV = latest.hrvRmssd > 0 && latest.hrvRmssd <= th.hrvLow;
 

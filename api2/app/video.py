@@ -1,4 +1,4 @@
-"""Helper for extracting the requested 30-second slice from uploaded videos."""
+"""Helper for extracting the requested 15-second slice from uploaded videos."""
 
 from __future__ import annotations
 

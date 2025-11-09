@@ -241,21 +241,21 @@ export default function DriverSelection() {
                   <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
                     <div className="font-semibold text-gray-900 dark:text-white">PERCLOS</div>
                     <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                      {(latestAnalysis.perclos_30s * 100).toFixed(1)}%
+                      {(latestAnalysis.perclos_15s * 100).toFixed(1)}%
                     </div>
                   </div>
                   
                   <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
                     <div className="font-semibold text-gray-900 dark:text-white">Head Down</div>
                     <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                      {latestAnalysis.pitchdown_avg_30s.toFixed(1)}°
+                      {latestAnalysis.pitchdown_avg_15s.toFixed(1)}°
                     </div>
                   </div>
                   
                   <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
                     <div className="font-semibold text-gray-900 dark:text-white">Yawns</div>
                     <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                      {latestAnalysis.yawn_count_30s}
+                      {latestAnalysis.yawn_count_15s}
                     </div>
                   </div>
                   

@@ -8,7 +8,7 @@ from typing import Dict, Sequence, Tuple
 class AnalyzerConfig:
     """Tunables shared by every metric computation."""
 
-    window_seconds: float = 30.0
+    window_seconds: float = 15.0
     confidence_threshold: float = 0.5  # Lowered for better glasses/lighting handling
     down_pitch_gate_deg: float = 25.0  # Slightly more lenient for head pose
 
@@ -24,9 +24,10 @@ class AnalyzerConfig:
     pitch_threshold_bounds: tuple[float, float] = (10.0, 25.0)
     pitch_threshold_percentile: float = 65.0
 
-    yawn_start_hold: float = 0.8  # seconds
-    yawn_end_hold: float = 0.3  # seconds
-    yawn_refractory: float = 2.0  # seconds
+    # Yawns can be fairly quick in real-world footage, so keep the hold / refractory windows short.
+    yawn_start_hold: float = 0.5  # seconds
+    yawn_end_hold: float = 0.2  # seconds
+    yawn_refractory: float = 1.0  # seconds
 
     iris_indices: Sequence[int] = (468, 469, 470, 471, 472, 473)
     ear_pairs: dict[str, Sequence[int]] = field(
@@ -52,7 +53,7 @@ class StateThresholds:
     # Supporting signal thresholds for confirmation
     yawn_duty_asleep: float = 0.25        # Confirmatory for asleep
     yawn_duty_drowsy: float = 0.15        # Confirmatory for drowsy
-    yawn_count_threshold: int = 2         # Yawn count threshold
+    yawn_count_threshold: int = 1         # Yawn count threshold (adjusted for 15s windows)
     
     droop_duty_asleep: float = 0.20       # Confirmatory for asleep/drowsy
     

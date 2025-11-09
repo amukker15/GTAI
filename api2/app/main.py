@@ -30,6 +30,8 @@ from .models import (
     VitalsSimResponse,
     WindowAggregateResponse,
     YawnResponse,
+    RouteAnalyticsRequest,
+    RouteAnalyticsResponse,
 )
 from .utils import parse_timestamp
 from .state_classifier import DriverStateClassifier
@@ -37,10 +39,11 @@ from .state_store import GLOBAL_STATE_STORE
 from .sim_vitals import VitalsSimulator
 from .video import VideoWindowExtractor
 from . import snowflake_db
+from .route_analytics import run_route_analytics
 
 app = FastAPI(
     title="Lucid Drowsiness API",
-    description="Upload a recording plus a timestamp; receive 30s vigilance analytics.",
+    description="Upload a recording plus a timestamp; receive 15s vigilance analytics.",
     version="0.1.0",
 )
 
@@ -389,7 +392,7 @@ async def perclos_endpoint(
         session_id=summary.session_id,
         driver_id=summary.driver_id,
         PERCLOS=summary.perclos_percent,
-        perclos_30s=summary.perclos_ratio,
+        perclos_15s=summary.perclos_ratio,
         ear_thresh_T=summary.ear_threshold,
     )
 
@@ -413,10 +416,10 @@ async def head_pose_endpoint(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
         driver_id=summary.driver_id,
-        pitchdown_avg_30s=summary.pitchdown_avg,
-        pitchdown_max_30s=summary.pitchdown_max,
-        droop_time_30s=summary.droop_time,
-        droop_duty_30s=summary.droop_duty,
+        pitchdown_avg_15s=summary.pitchdown_avg,
+        pitchdown_max_15s=summary.pitchdown_max,
+        droop_time_15s=summary.droop_time,
+        droop_duty_15s=summary.droop_duty,
         pitch_thresh_Tp=summary.pitch_threshold,
     )
 
@@ -440,10 +443,10 @@ async def yawning_endpoint(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
         driver_id=summary.driver_id,
-        yawn_count_30s=summary.yawn_count,
-        yawn_time_30s=summary.yawn_time,
-        yawn_duty_30s=summary.yawn_duty,
-        yawn_peak_30s=summary.yawn_peak,
+        yawn_count_15s=summary.yawn_count,
+        yawn_time_15s=summary.yawn_time,
+        yawn_duty_15s=summary.yawn_duty,
+        yawn_peak_15s=summary.yawn_peak,
     )
 
 
@@ -495,17 +498,17 @@ async def aggregate_endpoint(
         session_id=summary.session_id,
         driver_id=summary.driver_id,
         PERCLOS=summary.perclos_percent,
-        perclos_30s=summary.perclos_ratio,
+        perclos_15s=summary.perclos_ratio,
         ear_thresh_T=summary.ear_threshold,
-        pitchdown_avg_30s=summary.pitchdown_avg,
-        pitchdown_max_30s=summary.pitchdown_max,
-        droop_time_30s=summary.droop_time,
-        droop_duty_30s=summary.droop_duty,
+        pitchdown_avg_15s=summary.pitchdown_avg,
+        pitchdown_max_15s=summary.pitchdown_max,
+        droop_time_15s=summary.droop_time,
+        droop_duty_15s=summary.droop_duty,
         pitch_thresh_Tp=summary.pitch_threshold,
-        yawn_count_30s=summary.yawn_count,
-        yawn_time_30s=summary.yawn_time,
-        yawn_duty_30s=summary.yawn_duty,
-        yawn_peak_30s=summary.yawn_peak,
+        yawn_count_15s=summary.yawn_count,
+        yawn_time_15s=summary.yawn_time,
+        yawn_duty_15s=summary.yawn_duty,
+        yawn_peak_15s=summary.yawn_peak,
         confidence=summary.confidence_label,
         fps=summary.fps_observed,
     )
@@ -668,6 +671,7 @@ async def get_measurements(
         return {"measurements": []}
 
 
+<<<<<<< HEAD
 @app.post("/api/query")
 async def query_endpoint(payload: dict):
     """Run an arbitrary SQL query against Snowflake.
@@ -693,6 +697,16 @@ async def query_endpoint(payload: dict):
         print(f"[Snowflake] Query failed: {e}")
         # Return a 500 to the client but avoid leaking sensitive details
         raise HTTPException(status_code=500, detail=str(e))
+=======
+@app.post("/analytics/routes", response_model=RouteAnalyticsResponse)
+async def route_analytics_endpoint(payload: RouteAnalyticsRequest):
+    """Summarize risk per route by querying Snowflake + Cortex."""
+    try:
+        result: RouteAnalyticsResponse = await run_in_threadpool(run_route_analytics, payload)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Route analytics unavailable: {exc}") from exc
+    return result
+>>>>>>> 4071970db04ea199a26b9952f57df58a44c26edf
 
 
 """FastAPI entrypoint wiring request handlers to analyzers and simulators."""

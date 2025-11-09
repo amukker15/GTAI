@@ -60,23 +60,23 @@ class BaseWindowResponse(BaseModel):
 
 class PerclosResponse(BaseWindowResponse):
     PERCLOS: float = Field(..., description="PERCLOS in percent")
-    perclos_30s: float = Field(..., description="Fraction during the window")
+    perclos_15s: float = Field(..., description="Fraction during the window")
     ear_thresh_T: float = Field(..., description="Adaptive EAR threshold")
 
 
 class HeadPoseResponse(BaseWindowResponse):
-    pitchdown_avg_30s: float
-    pitchdown_max_30s: float
-    droop_time_30s: float
-    droop_duty_30s: float
+    pitchdown_avg_15s: float
+    pitchdown_max_15s: float
+    droop_time_15s: float
+    droop_duty_15s: float
     pitch_thresh_Tp: float
 
 
 class YawnResponse(BaseWindowResponse):
-    yawn_count_30s: int
-    yawn_time_30s: float
-    yawn_duty_30s: float
-    yawn_peak_30s: float | None = Field(default=None)
+    yawn_count_15s: int
+    yawn_time_15s: float
+    yawn_duty_15s: float
+    yawn_peak_15s: float | None = Field(default=None)
 
 
 class QualityResponse(BaseWindowResponse):
@@ -88,17 +88,17 @@ class WindowAggregateResponse(
     BaseWindowResponse
 ):  # helpful if the client wants everything with one call
     PERCLOS: float
-    perclos_30s: float
+    perclos_15s: float
     ear_thresh_T: float
-    pitchdown_avg_30s: float
-    pitchdown_max_30s: float
-    droop_time_30s: float
-    droop_duty_30s: float
+    pitchdown_avg_15s: float
+    pitchdown_max_15s: float
+    droop_time_15s: float
+    droop_duty_15s: float
     pitch_thresh_Tp: float
-    yawn_count_30s: int
-    yawn_time_30s: float
-    yawn_duty_30s: float
-    yawn_peak_30s: float | None
+    yawn_count_15s: int
+    yawn_time_15s: float
+    yawn_duty_15s: float
+    yawn_peak_15s: float | None
     confidence: str
     fps: float
 
@@ -111,9 +111,9 @@ class StateReason(BaseModel):
 
 
 class ThresholdsUsed(BaseModel):
-    perclos_high_30s: float
-    perclos_concerning_30s: float
-    perclos_elevated_30s: float
+    perclos_high_15s: float
+    perclos_concerning_15s: float
+    perclos_elevated_15s: float
     yawn_duty_concerning: float
     yawn_duty_high: float
     droop_duty_concerning: float
@@ -125,17 +125,17 @@ class StateRequest(BaseModel):
     ts_end: datetime
     session_id: str
     driver_id: str
-    perclos_30s: float | None = None
+    perclos_15s: float | None = None
     ear_thresh_T: float | None = None
-    pitchdown_avg_30s: float | None = None
-    pitchdown_max_30s: float | None = None
-    droop_time_30s: float | None = None
-    droop_duty_30s: float | None = None
+    pitchdown_avg_15s: float | None = None
+    pitchdown_max_15s: float | None = None
+    droop_time_15s: float | None = None
+    droop_duty_15s: float | None = None
     pitch_thresh_Tp: float | None = None
-    yawn_count_30s: int | None = None
-    yawn_time_30s: float | None = None
-    yawn_duty_30s: float | None = None
-    yawn_peak_30s: float | None = None
+    yawn_count_15s: int | None = None
+    yawn_time_15s: float | None = None
+    yawn_duty_15s: float | None = None
+    yawn_peak_15s: float | None = None
     confidence: str | None = None
     fps: float | None = None
 
@@ -196,3 +196,66 @@ class VitalsSimResponse(BaseModel):
     hrv_rmssd_ms: float
     ranges_used: dict[str, SimRange]
     seed: int | None = None
+
+
+class RouteAnalyticsRequest(BaseModel):
+    start: datetime | None = Field(
+        default=None, description="ISO timestamp for the earliest window to include"
+    )
+    end: datetime | None = Field(
+        default=None, description="ISO timestamp for the latest window to include"
+    )
+    route_ids: list[str] | None = Field(
+        default=None,
+        description="Subset of route IDs to include. Empty or omitted means all routes.",
+    )
+    include_narrative: bool = Field(
+        default=True,
+        description="When true, Snowflake Cortex is asked to summarize each route.",
+    )
+    limit: int | None = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of routes to return, ordered by avg risk.",
+    )
+    lookback_days: int | None = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description="Fallback range when start/end are omitted.",
+    )
+    min_windows: int | None = Field(
+        default=20,
+        ge=1,
+        description="Minimum windows per route required to appear in the response.",
+    )
+
+
+class RouteAnalyticsRow(BaseModel):
+    route_id: str
+    window_count: int
+    avg_risk: float
+    drowsy_rate: float
+    asleep_rate: float
+    avg_perclos: float
+    avg_yawn_duty: float
+    avg_droop_duty: float
+    avg_yawn_count: float | None = None
+    avg_pitch_max: float | None = None
+    avg_pitch_avg: float | None = None
+    peak_risk: float | None = None
+    riskiest_ts: datetime | None = None
+    riskiest_risk: float | None = None
+    route_length_km: float | None = None
+    visibility_avg_km: float | None = None
+    elevation_change_m: float | None = None
+    intersection_count: float | None = None
+    nighttime_proportion: float | None = None
+    rest_stops_per_100km: float | None = None
+    cortex_summary: str | None = None
+
+
+class RouteAnalyticsResponse(BaseModel):
+    generated_at: datetime
+    routes: list[RouteAnalyticsRow]

@@ -3,7 +3,7 @@ export type Telemetry = {
   timestamp: string;   // ISO
   perclos: number;     // 0..1
   headDownDegrees: number;
-  yawnCount30s: number;
+  yawnCount15s: number;
   heartRate: number;
   hrvRmssd: number;    // ms
   lat: number;
