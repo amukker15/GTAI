@@ -310,14 +310,10 @@ export default function TruckDetail() {
   const thresholds = useStore((s) => s.thresholds) as Thresholds | null;
   const analysisResults = useStore((s) => s.analysisResults);
   const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
-  const getAnalysisProgress = useStore((s) => s.getAnalysisProgress);
   const { darkMode } = useDarkMode();
 
   // Chart tab state
   const [activeChartTab, setActiveChartTab] = useState<ChartTab>('perclos');
-
-  // Get analysis progress
-  const analysisProgress = getAnalysisProgress();
 
   // Local UI state
 

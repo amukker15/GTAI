@@ -2,14 +2,11 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import {
-  BarChart,
-  Bar,
   CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Legend,
   ScatterChart,
   Scatter,
 } from "recharts";
@@ -146,16 +143,6 @@ export default function RouteAnalysis() {
   const handleBotRetry = () => setBotRefreshKey((key) => key + 1);
 
   const routes = dataset?.routes ?? [];
-  const chartData = useMemo(
-    () =>
-      routes.map((route) => ({
-        route: route.routeId,
-        compositeRisk: Number((route.routeRiskScore ?? route.avgRisk ?? 0).toFixed(1)),
-        drowsyValue: (route.drowsyRate ?? 0) * 100,
-        asleepValue: (route.asleepRate ?? 0) * 100,
-      })),
-    [routes]
-  );
 
   const selectedDetails = useMemo(() => {
     return routes.find((r) => r.routeId === selectedRoute) ?? null;
@@ -259,75 +246,42 @@ export default function RouteAnalysis() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            <div className="xl:col-span-2 card h-[420px]">
-              <div className="card-h font-semibold">Composite risk vs fatigue rate</div>
-              <div className="card-b h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="route" />
-                    <YAxis yAxisId="left" domain={[0, 100]} label={{ value: "Composite risk", angle: -90, position: "insideLeft" }} />
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      tickFormatter={(v) => `${v}%`}
-                      label={{ value: "Fatigue %", angle: 90, position: "insideRight" }}
-                    />
-                    <Tooltip
-                      formatter={(value: number, key) => {
-                        if (key === "compositeRisk") {
-                          return [`${value.toFixed(1)} risk`, "Composite risk"];
-                        }
-                        return [`${value.toFixed(1)}%`, key === "drowsyValue" ? "Drowsy pct" : "Asleep pct"];
-                      }}
-                    />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="compositeRisk" name="Composite risk" fill="#2563eb" />
-                    <Bar yAxisId="right" dataKey="drowsyValue" name="Drowsy %" fill="#f97316" />
-                    <Bar yAxisId="right" dataKey="asleepValue" name="Asleep %" fill="#dc2626" />
-                  </BarChart>
-                </ResponsiveContainer>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <div className="card h-[420px]">
+              <div className="card-h font-semibold flex items-center justify-between">
+                <span>Route insight</span>
+                {selectedDetails && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {selectedDetails.routeId}
+                  </span>
+                )}
+              </div>
+              <div className="card-b space-y-4 overflow-y-auto">
+                {selectedDetails ? (
+                  <>
+                    <InsightRow label="Composite risk" value={`${(selectedDetails.routeRiskScore ?? selectedDetails.avgRisk ?? 0).toFixed(1)}`} />
+                    <InsightRow label="Avg risk (raw)" value={`${(selectedDetails.avgRisk ?? 0).toFixed(1)}`} />
+                    <InsightRow label="Drowsy windows" value={percent(selectedDetails.drowsyRate ?? 0)} />
+                    <InsightRow label="Asleep windows" value={percent(selectedDetails.asleepRate ?? 0)} />
+                    <InsightRow label="Nighttime driving" value={percent(selectedDetails.nighttimeProportion ?? 0)} />
+                    <InsightRow label="Rest stops / 100 km" value={formatNumber(selectedDetails.restStopsPer100km)} />
+                    <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-700 dark:text-gray-200">
+                      {selectedDetails.cortexSummary ?? "Snowflake Cortex did not return a summary for this route."}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Select a route to see AI recommendations.</p>
+                )}
               </div>
             </div>
 
-            <div className="space-y-5">
-              <div className="card h-[420px]">
-                <div className="card-h font-semibold flex items-center justify-between">
-                  <span>Route insight</span>
-                  {selectedDetails && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {selectedDetails.routeId}
-                    </span>
-                  )}
-                </div>
-                <div className="card-b space-y-4 overflow-y-auto">
-                  {selectedDetails ? (
-                    <>
-                      <InsightRow label="Composite risk" value={`${(selectedDetails.routeRiskScore ?? selectedDetails.avgRisk ?? 0).toFixed(1)}`} />
-                      <InsightRow label="Avg risk (raw)" value={`${(selectedDetails.avgRisk ?? 0).toFixed(1)}`} />
-                      <InsightRow label="Drowsy windows" value={percent(selectedDetails.drowsyRate ?? 0)} />
-                      <InsightRow label="Asleep windows" value={percent(selectedDetails.asleepRate ?? 0)} />
-                      <InsightRow label="Nighttime driving" value={percent(selectedDetails.nighttimeProportion ?? 0)} />
-                      <InsightRow label="Rest stops / 100 km" value={formatNumber(selectedDetails.restStopsPer100km)} />
-                      <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-700 dark:text-gray-200">
-                        {selectedDetails.cortexSummary ?? "Snowflake Cortex did not return a summary for this route."}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Select a route to see AI recommendations.</p>
-                  )}
-                </div>
-              </div>
-
-              <RouteRiskCoach
-                routeId={selectedRoute}
-                response={botResponse}
-                loading={botLoading}
-                error={botError}
-                onRetry={handleBotRetry}
-              />
-            </div>
+            <RouteRiskCoach
+              routeId={selectedRoute}
+              response={botResponse}
+              loading={botLoading}
+              error={botError}
+              onRetry={handleBotRetry}
+            />
           </div>
 
           {featureCharts.length > 0 && (

@@ -22,7 +22,6 @@ export default function AppHeader() {
   const headerRef = useRef<HTMLElement | null>(null);
   const navRefs = useRef<(HTMLElement | null)[]>([]);
   const resetGlobalTimer = useStore((s) => s.resetGlobalTimer);
-  const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
 
   const pathname = location.pathname;
