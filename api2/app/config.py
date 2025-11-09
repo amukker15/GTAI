@@ -44,7 +44,7 @@ class StateThresholds:
     perclos_concerning_30s: float = 0.15
     perclos_elevated_30s: float = 0.08
     perclos_asleep_strict: float = 0.50
-    perclos_asleep_combo: float = 0.35
+    perclos_asleep_combo: float = 0.34
     yawn_duty_concerning: float = 0.15
     yawn_duty_high: float = 0.25
     yawn_duty_asleep: float = 0.30
@@ -52,8 +52,8 @@ class StateThresholds:
     droop_duty_concerning: float = 0.20
     droop_duty_high: float = 0.40
     droop_duty_asleep: float = 0.30
-    pitchdown_flag: float = 25.0
-    pitchdown_drowsy_flag: float = 20.0
+    pitchdown_flag: float = 40.0
+    pitchdown_drowsy_flag: float = 40.0
     fps_min_ok: float = 10.0
     hysteresis_seconds: int = 300
 

@@ -1,7 +1,7 @@
 # Lucid
 
 ## Problem Statement
-Thousands of freight trucking accidents occur every single year due to drowsiness, caused by factors such as truckers being overworked. Though ELD mandates (which document total hours driven) have made some progress, truckers still struggle on long hauls.  
+Thousands of freight trucking accidents occur every single year due to drowsiness, caused by factors such as truckers being overworked. Though ELD mandates (which document total hours driven) have made some progress, truckers still struggle to stay awake on long hauls.  
 
 ## Our Solution
 Lucid repeatedly takes the 30 seconds leading up to any timestamp in a driver video and runs a MediaPipe‑powered computer-vision pipeline to estimate PERCLOS(Percentage of Closure Of the Pupil over Seconds), head pose, yawns, heart rate, and heart rate variablity, and classifies the driver’s current state (Lucid, Drowsy, Asleep).  Each window’s metrics and the derived state feed a Snowflake lakehouse where fleet ops can query and trend the data.  A React dashboard streams the most recent five vigilance variables for every truck (PERCLOS, Head Down Degrees, Yawns/30s, Heart rate, HRV), highlights risk levels, and links to long‑term analytics pulled from Snowflake.  Companies can click any truck or fallback route marker to open that driver’s full detail view, tweak thresholds, and review alert history.

@@ -1,5 +1,3 @@
-import { apiRequest } from "./client";
-
 export type AnalysisResult = {
   ts_end: string;
   session_id: string;

@@ -150,7 +150,7 @@ class WindowAnalyzer:
             samples,
             start,
             end,
-            lambda s: s.ear is not None and s.ear < ear_thresh,
+            lambda s: (s.ear is not None and s.ear < ear_thresh) or (s.pitch_down is not None and s.pitch_down >= 10.0),
         )
         perclos_ratio = perclos_time / window
 
