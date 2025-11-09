@@ -168,7 +168,7 @@ export default function AppHeader() {
       className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"
     >
       <div className="relative mx-auto max-w-full px-6 py-3">
-        <div className="flex items-center justify-between gap-6">
+        <div className="grid grid-cols-3 items-center gap-6">
           {/* Brand Section - Left */}
           <div className="flex items-center gap-4">
             <button 
@@ -200,7 +200,7 @@ export default function AppHeader() {
           </div>
 
           {/* Phone button + Dark Mode Toggle - Right */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 justify-end">
             <button
               title="Open Phone"
               onClick={() => navigate('/phone')}

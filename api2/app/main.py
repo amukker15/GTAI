@@ -701,7 +701,6 @@ async def get_measurements(
         return {"measurements": []}
 
 
-<<<<<<< HEAD
 @app.post("/api/query")
 async def query_endpoint(payload: dict):
     """Run an arbitrary SQL query against Snowflake.
@@ -727,7 +726,8 @@ async def query_endpoint(payload: dict):
         print(f"[Snowflake] Query failed: {e}")
         # Return a 500 to the client but avoid leaking sensitive details
         raise HTTPException(status_code=500, detail=str(e))
-=======
+
+
 @app.post("/analytics/routes", response_model=RouteAnalyticsResponse)
 async def route_analytics_endpoint(payload: RouteAnalyticsRequest):
     """Summarize risk per route by querying Snowflake + Cortex."""
@@ -736,7 +736,6 @@ async def route_analytics_endpoint(payload: RouteAnalyticsRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Route analytics unavailable: {exc}") from exc
     return result
->>>>>>> 4071970db04ea199a26b9952f57df58a44c26edf
 
 
 """FastAPI entrypoint wiring request handlers to analyzers and simulators."""

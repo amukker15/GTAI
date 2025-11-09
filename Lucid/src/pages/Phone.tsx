@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
+import { AlertTriangle } from "../components/icons";
 
 export default function Phone() {
   const navigate = useNavigate();
@@ -81,14 +82,9 @@ export default function Phone() {
 
   // flash control refs
   const isFlashingRef = useRef(false);
-  const flashIntervalRef = useRef<number | null>(null);
   const flashTimeoutRef = useRef<number | null>(null);
 
   function clearFlashTimers() {
-    if (flashIntervalRef.current) {
-      clearInterval(flashIntervalRef.current as unknown as number);
-      flashIntervalRef.current = null;
-    }
     if (flashTimeoutRef.current) {
       clearTimeout(flashTimeoutRef.current as unknown as number);
       flashTimeoutRef.current = null;
@@ -101,23 +97,19 @@ export default function Phone() {
     if (isFlashingRef.current) return;
     isFlashingRef.current = true;
     setFlashVisible(true);
-    // toggle visibility every 500ms to create a flashing effect
-    flashIntervalRef.current = window.setInterval(() => {
-      setFlashVisible((v) => !v);
-    }, 500);
-    // stop after 10 seconds
+    // hide after 3 seconds total
     flashTimeoutRef.current = window.setTimeout(() => {
       clearFlashTimers();
-    }, 10000);
+    }, 3000);
   }
 
-  // run query immediately and then every second
+  // run query immediately and then every half second
   useEffect(() => {
     // initial run
     runQuery();
     const id = setInterval(() => {
       runQuery();
-    }, 1000);
+    }, 500);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -132,9 +124,17 @@ export default function Phone() {
 
   return (
     <div className="min-h-screen flex items-center justify-center text-center bg-white dark:bg-slate-900 p-6">
-      {/* flashing overlay */}
+      {/* yellow alert overlay with fade-in */}
       {flashVisible && (
-        <div className="fixed inset-0 z-50 pointer-events-none" style={{ backgroundColor: 'rgba(255,0,0,0.6)', mixBlendMode: 'screen' }} />
+        <div 
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 animate-fadeIn"
+          style={{ backgroundColor: '#eab308' }} // yellow-500
+        >
+          <AlertTriangle className="w-32 h-32 text-slate-900" strokeWidth={2.5} />
+          <p className="text-4xl font-bold text-slate-900">
+            Please be attentive
+          </p>
+        </div>
       )}
       <div className="w-full max-w-3xl">
         <div className="flex flex-col items-center gap-6">
@@ -161,16 +161,37 @@ export default function Phone() {
             </button>
           </div>
 
-          <div className="w-full mt-6 text-left">
-            {error && (
-              <div className="text-red-600 bg-red-100 p-3 rounded">Error: {error}</div>
-            )}
+          {/* Query Results Box - Always visible */}
+          <div className="w-full mt-6">
+            <div className="border-2 border-slate-300 dark:border-slate-600 rounded-lg p-4 bg-white dark:bg-slate-800 shadow-lg">
+              <h3 className="text-lg font-semibold mb-3 text-slate-900 dark:text-white">
+                Latest Status Query
+              </h3>
+              
+              {loading && (
+                <div className="text-slate-600 dark:text-slate-400 italic">
+                  Loading...
+                </div>
+              )}
 
-            {rows && (
-              <pre className="bg-slate-50 dark:bg-slate-800 p-3 rounded text-sm overflow-auto">
-                {JSON.stringify(rows, null, 2)}
-              </pre>
-            )}
+              {error && (
+                <div className="text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/20 p-3 rounded mb-3">
+                  <strong>Error:</strong> {error}
+                </div>
+              )}
+
+              {rows && (
+                <pre className="bg-slate-50 dark:bg-slate-900 p-3 rounded text-xs overflow-auto max-h-64 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700">
+                  {JSON.stringify(rows, null, 2)}
+                </pre>
+              )}
+
+              {!loading && !error && !rows && (
+                <div className="text-slate-500 dark:text-slate-400 italic">
+                  No data yet...
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
