@@ -74,9 +74,9 @@ class DriverStateClassifier:
         final_state = self._apply_hysteresis(bucket.session_id, bucket.driver_id, raw_state, risk_score)
 
         thresholds_payload = ThresholdsUsed(
-            perclos_high_30s=self.thresholds.perclos_high_30s,
-            perclos_concerning_30s=self.thresholds.perclos_concerning_30s,
-            perclos_elevated_30s=self.thresholds.perclos_elevated_30s,
+            perclos_high_15s=self.thresholds.perclos_high_30s,
+            perclos_concerning_15s=self.thresholds.perclos_concerning_30s,
+            perclos_elevated_15s=self.thresholds.perclos_elevated_30s,
             yawn_duty_concerning=self.thresholds.yawn_duty_concerning,
             yawn_duty_high=self.thresholds.yawn_duty_high,
             droop_duty_concerning=self.thresholds.droop_duty_concerning,
@@ -116,22 +116,22 @@ class DriverStateClassifier:
     def _extract_signals(self, bucket: StateRequest, reasons: list[StateReason], seen: set) -> dict:
         signals = {}
         clip_fields = {
-            "perclos_30s": (0.0, 1.0),
-            "yawn_duty_30s": (0.0, 1.0),
-            "droop_duty_30s": (0.0, 1.0),
+            "perclos_15s": (0.0, 1.0),
+            "yawn_duty_15s": (0.0, 1.0),
+            "droop_duty_15s": (0.0, 1.0),
         }
         defaults = {
-            "perclos_30s": 0.0,
+            "perclos_15s": 0.0,
             "ear_thresh_T": 0.0,
-            "pitchdown_avg_30s": 0.0,
-            "pitchdown_max_30s": 0.0,
-            "droop_time_30s": 0.0,
-            "droop_duty_30s": 0.0,
+            "pitchdown_avg_15s": 0.0,
+            "pitchdown_max_15s": 0.0,
+            "droop_time_15s": 0.0,
+            "droop_duty_15s": 0.0,
             "pitch_thresh_Tp": 0.0,
-            "yawn_count_30s": 0,
-            "yawn_time_30s": 0.0,
-            "yawn_duty_30s": 0.0,
-            "yawn_peak_30s": 0.0,
+            "yawn_count_15s": 0,
+            "yawn_time_15s": 0.0,
+            "yawn_duty_15s": 0.0,
+            "yawn_peak_15s": 0.0,
             "confidence": "OK",
             "fps": 0.0,
         }
@@ -156,61 +156,61 @@ class DriverStateClassifier:
     def _evaluate_asleep(self, signals, seen):
         """PERCLOS-first asleep evaluation with confirmatory signals."""
         reasons: list[StateReason] = []
-        perclos = signals["perclos_30s"]
-        yawn_duty = signals["yawn_duty_30s"]
-        yawn_count = signals["yawn_count_30s"]
-        droop_duty = signals["droop_duty_30s"]
-        pitch_max = signals["pitchdown_max_30s"]
+        perclos = signals["perclos_15s"]
+        yawn_duty = signals["yawn_duty_15s"]
+        yawn_count = signals["yawn_count_15s"]
+        droop_duty = signals["droop_duty_15s"]
+        pitch_max = signals["pitchdown_max_15s"]
 
         # A1: Primary asleep rule - PERCLOS ≥ 0.50
         if perclos >= self.thresholds.perclos_asleep_primary:
-            self._push_reason(reasons, seen, "perclos_30s", perclos, self.thresholds.perclos_asleep_primary, ">=")
+            self._push_reason(reasons, seen, "perclos_15s", perclos, self.thresholds.perclos_asleep_primary, ">=")
             return reasons
 
         # A2: Confirmatory asleep rule - PERCLOS ≥ 0.40 AND at least one confirmer
         if perclos >= self.thresholds.perclos_asleep_confirm:
-            self._push_reason(reasons, seen, "perclos_30s", perclos, self.thresholds.perclos_asleep_confirm, ">=")
+            self._push_reason(reasons, seen, "perclos_15s", perclos, self.thresholds.perclos_asleep_confirm, ">=")
             
             confirmers = []
             if droop_duty >= self.thresholds.droop_duty_asleep:
                 confirmers.append("droop")
-                self._push_reason(reasons, seen, "droop_duty_30s", droop_duty, self.thresholds.droop_duty_asleep, ">=")
+                self._push_reason(reasons, seen, "droop_duty_15s", droop_duty, self.thresholds.droop_duty_asleep, ">=")
             
             if pitch_max >= self.thresholds.pitchdown_asleep:
                 confirmers.append("pitch")
-                self._push_reason(reasons, seen, "pitchdown_max_30s", pitch_max, self.thresholds.pitchdown_asleep, ">=")
+                self._push_reason(reasons, seen, "pitchdown_max_15s", pitch_max, self.thresholds.pitchdown_asleep, ">=")
             
             if yawn_duty >= self.thresholds.yawn_duty_asleep:
                 confirmers.append("yawn_duty")
-                self._push_reason(reasons, seen, "yawn_duty_30s", yawn_duty, self.thresholds.yawn_duty_asleep, ">=")
+                self._push_reason(reasons, seen, "yawn_duty_15s", yawn_duty, self.thresholds.yawn_duty_asleep, ">=")
             
             if yawn_count >= self.thresholds.yawn_count_threshold:
                 confirmers.append("yawn_count")
-                self._push_reason(reasons, seen, "yawn_count_30s", yawn_count, self.thresholds.yawn_count_threshold, ">=")
+                self._push_reason(reasons, seen, "yawn_count_15s", yawn_count, self.thresholds.yawn_count_threshold, ">=")
             
             if confirmers:
                 return reasons
 
         # A3: Broad confirmatory asleep rule - PERCLOS ≥ 0.35 AND two confirmers
         if perclos >= self.thresholds.perclos_asleep_broad:
-            self._push_reason(reasons, seen, "perclos_30s", perclos, self.thresholds.perclos_asleep_broad, ">=")
+            self._push_reason(reasons, seen, "perclos_15s", perclos, self.thresholds.perclos_asleep_broad, ">=")
             
             confirmers = []
             if droop_duty >= self.thresholds.droop_duty_asleep:
                 confirmers.append("droop")
-                self._push_reason(reasons, seen, "droop_duty_30s", droop_duty, self.thresholds.droop_duty_asleep, ">=")
+                self._push_reason(reasons, seen, "droop_duty_15s", droop_duty, self.thresholds.droop_duty_asleep, ">=")
             
             if pitch_max >= self.thresholds.pitchdown_asleep:
                 confirmers.append("pitch")
-                self._push_reason(reasons, seen, "pitchdown_max_30s", pitch_max, self.thresholds.pitchdown_asleep, ">=")
+                self._push_reason(reasons, seen, "pitchdown_max_15s", pitch_max, self.thresholds.pitchdown_asleep, ">=")
             
             if yawn_duty >= self.thresholds.yawn_duty_asleep:
                 confirmers.append("yawn_duty")
-                self._push_reason(reasons, seen, "yawn_duty_30s", yawn_duty, self.thresholds.yawn_duty_asleep, ">=")
+                self._push_reason(reasons, seen, "yawn_duty_15s", yawn_duty, self.thresholds.yawn_duty_asleep, ">=")
             
             if yawn_count >= self.thresholds.yawn_count_threshold:
                 confirmers.append("yawn_count")
-                self._push_reason(reasons, seen, "yawn_count_30s", yawn_count, self.thresholds.yawn_count_threshold, ">=")
+                self._push_reason(reasons, seen, "yawn_count_15s", yawn_count, self.thresholds.yawn_count_threshold, ">=")
             
             if len(confirmers) >= 2:
                 return reasons
@@ -222,37 +222,37 @@ class DriverStateClassifier:
     def _evaluate_drowsy(self, signals, seen):
         """PERCLOS-first drowsy evaluation with supporting signals."""
         reasons: list[StateReason] = []
-        perclos = signals["perclos_30s"]
-        yawn_duty = signals["yawn_duty_30s"]
-        yawn_count = signals["yawn_count_30s"]
-        droop_duty = signals["droop_duty_30s"]
-        pitch_max = signals["pitchdown_max_30s"]
+        perclos = signals["perclos_15s"]
+        yawn_duty = signals["yawn_duty_15s"]
+        yawn_count = signals["yawn_count_15s"]
+        droop_duty = signals["droop_duty_15s"]
+        pitch_max = signals["pitchdown_max_15s"]
 
         # D1: Primary drowsy rule - 0.25 ≤ PERCLOS < 0.50
         if self.thresholds.perclos_drowsy_primary <= perclos < self.thresholds.perclos_asleep_primary:
-            self._push_reason(reasons, seen, "perclos_30s", perclos, self.thresholds.perclos_drowsy_primary, ">=")
+            self._push_reason(reasons, seen, "perclos_15s", perclos, self.thresholds.perclos_drowsy_primary, ">=")
             return reasons
 
         # D2: Assisted drowsy rule - 0.15 ≤ PERCLOS < 0.25 AND any supporter
         if self.thresholds.perclos_drowsy_assist <= perclos < self.thresholds.perclos_drowsy_primary:
-            self._push_reason(reasons, seen, "perclos_30s", perclos, self.thresholds.perclos_drowsy_assist, ">=")
+            self._push_reason(reasons, seen, "perclos_15s", perclos, self.thresholds.perclos_drowsy_assist, ">=")
             
             supporters = []
             if yawn_duty >= self.thresholds.yawn_duty_drowsy:
                 supporters.append("yawn_duty")
-                self._push_reason(reasons, seen, "yawn_duty_30s", yawn_duty, self.thresholds.yawn_duty_drowsy, ">=")
+                self._push_reason(reasons, seen, "yawn_duty_15s", yawn_duty, self.thresholds.yawn_duty_drowsy, ">=")
             
             if yawn_count >= self.thresholds.yawn_count_threshold:
                 supporters.append("yawn_count")
-                self._push_reason(reasons, seen, "yawn_count_30s", yawn_count, self.thresholds.yawn_count_threshold, ">=")
+                self._push_reason(reasons, seen, "yawn_count_15s", yawn_count, self.thresholds.yawn_count_threshold, ">=")
             
             if droop_duty >= self.thresholds.droop_duty_asleep:
                 supporters.append("droop")
-                self._push_reason(reasons, seen, "droop_duty_30s", droop_duty, self.thresholds.droop_duty_asleep, ">=")
+                self._push_reason(reasons, seen, "droop_duty_15s", droop_duty, self.thresholds.droop_duty_asleep, ">=")
             
             if pitch_max >= self.thresholds.pitchdown_drowsy:
                 supporters.append("pitch")
-                self._push_reason(reasons, seen, "pitchdown_max_30s", pitch_max, self.thresholds.pitchdown_drowsy, ">=")
+                self._push_reason(reasons, seen, "pitchdown_max_15s", pitch_max, self.thresholds.pitchdown_drowsy, ">=")
             
             if supporters:
                 return reasons
@@ -264,11 +264,11 @@ class DriverStateClassifier:
     def _evaluate_lucid(self, signals, seen):
         """Lucid evaluation with optional near-threshold warning."""
         reasons: list[StateReason] = []
-        perclos = signals["perclos_30s"]
+        perclos = signals["perclos_15s"]
         
         # Optional: Add near-threshold warning for values approaching drowsy range
         if perclos >= self.thresholds.perclos_lucid_near:
-            self._push_reason(reasons, seen, "perclos_30s", perclos, self.thresholds.perclos_lucid_near, "near_threshold")
+            self._push_reason(reasons, seen, "perclos_15s", perclos, self.thresholds.perclos_lucid_near, "near_threshold")
         
         return reasons
 
@@ -277,9 +277,9 @@ class DriverStateClassifier:
         def clamp01(value: float) -> float:
             return max(0.0, min(1.0, value))
 
-        perclos = signals["perclos_30s"]
-        yawn_duty = signals["yawn_duty_30s"]
-        droop_duty = signals["droop_duty_30s"]
+        perclos = signals["perclos_15s"]
+        yawn_duty = signals["yawn_duty_15s"]
+        droop_duty = signals["droop_duty_15s"]
 
         # Normalize to 0-1 using the new risk scoring ranges
         p = clamp01((perclos - self.thresholds.perclos_risk_min) / (self.thresholds.perclos_risk_max - self.thresholds.perclos_risk_min))

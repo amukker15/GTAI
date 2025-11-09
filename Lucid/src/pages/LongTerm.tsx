@@ -47,7 +47,7 @@ export default function LongTerm() {
       trip: t.tripId,
       perclos: t.hoursToThreshold.perclos,
       headDownDegrees: t.hoursToThreshold.headDownDegrees,
-      yawnCount30s: t.hoursToThreshold.yawnCount30s,
+      yawnCount15s: t.hoursToThreshold.yawnCount15s,
       heartRate: t.hoursToThreshold.heartRate,
       hrvRmssd: t.hoursToThreshold.hrvRmssd,
     }));
@@ -160,7 +160,7 @@ export default function LongTerm() {
                   <Legend />
                   <Bar dataKey="perclos" name="PERCLOS" />
                   <Bar dataKey="headDownDegrees" name="Head Down (°)" />
-                  <Bar dataKey="yawnCount30s" name="Yawns/30s" />
+                  <Bar dataKey="yawnCount15s" name="Yawns/15s" />
                   <Bar dataKey="heartRate" name="Heart Rate" />
                   <Bar dataKey="hrvRmssd" name="HRV RMSSD" />
                 </BarChart>

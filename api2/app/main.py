@@ -40,7 +40,7 @@ from . import snowflake_db
 
 app = FastAPI(
     title="Lucid Drowsiness API",
-    description="Upload a recording plus a timestamp; receive 30s vigilance analytics.",
+    description="Upload a recording plus a timestamp; receive 15s vigilance analytics.",
     version="0.1.0",
 )
 
@@ -389,7 +389,7 @@ async def perclos_endpoint(
         session_id=summary.session_id,
         driver_id=summary.driver_id,
         PERCLOS=summary.perclos_percent,
-        perclos_30s=summary.perclos_ratio,
+        perclos_15s=summary.perclos_ratio,
         ear_thresh_T=summary.ear_threshold,
     )
 
@@ -413,10 +413,10 @@ async def head_pose_endpoint(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
         driver_id=summary.driver_id,
-        pitchdown_avg_30s=summary.pitchdown_avg,
-        pitchdown_max_30s=summary.pitchdown_max,
-        droop_time_30s=summary.droop_time,
-        droop_duty_30s=summary.droop_duty,
+        pitchdown_avg_15s=summary.pitchdown_avg,
+        pitchdown_max_15s=summary.pitchdown_max,
+        droop_time_15s=summary.droop_time,
+        droop_duty_15s=summary.droop_duty,
         pitch_thresh_Tp=summary.pitch_threshold,
     )
 
@@ -440,10 +440,10 @@ async def yawning_endpoint(
         ts_end=summary.ts_end_iso,
         session_id=summary.session_id,
         driver_id=summary.driver_id,
-        yawn_count_30s=summary.yawn_count,
-        yawn_time_30s=summary.yawn_time,
-        yawn_duty_30s=summary.yawn_duty,
-        yawn_peak_30s=summary.yawn_peak,
+        yawn_count_15s=summary.yawn_count,
+        yawn_time_15s=summary.yawn_time,
+        yawn_duty_15s=summary.yawn_duty,
+        yawn_peak_15s=summary.yawn_peak,
     )
 
 
@@ -495,17 +495,17 @@ async def aggregate_endpoint(
         session_id=summary.session_id,
         driver_id=summary.driver_id,
         PERCLOS=summary.perclos_percent,
-        perclos_30s=summary.perclos_ratio,
+        perclos_15s=summary.perclos_ratio,
         ear_thresh_T=summary.ear_threshold,
-        pitchdown_avg_30s=summary.pitchdown_avg,
-        pitchdown_max_30s=summary.pitchdown_max,
-        droop_time_30s=summary.droop_time,
-        droop_duty_30s=summary.droop_duty,
+        pitchdown_avg_15s=summary.pitchdown_avg,
+        pitchdown_max_15s=summary.pitchdown_max,
+        droop_time_15s=summary.droop_time,
+        droop_duty_15s=summary.droop_duty,
         pitch_thresh_Tp=summary.pitch_threshold,
-        yawn_count_30s=summary.yawn_count,
-        yawn_time_30s=summary.yawn_time,
-        yawn_duty_30s=summary.yawn_duty,
-        yawn_peak_30s=summary.yawn_peak,
+        yawn_count_15s=summary.yawn_count,
+        yawn_time_15s=summary.yawn_time,
+        yawn_duty_15s=summary.yawn_duty,
+        yawn_peak_15s=summary.yawn_peak,
         confidence=summary.confidence_label,
         fps=summary.fps_observed,
     )

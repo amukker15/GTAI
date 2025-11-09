@@ -8,7 +8,7 @@ export type TripPoint = {
   hoursToThreshold: {
     perclos: number;
     headDownDegrees: number;
-    yawnCount30s: number;
+    yawnCount15s: number;
     heartRate: number;
     hrvRmssd: number;
   };
@@ -25,7 +25,7 @@ export type RiskPoint = { hour: number; risk: number };
 export type VarKey =
   | "perclos"
   | "headDownDegrees"
-  | "yawnCount30s"
+  | "yawnCount15s"
   | "heartRate"
   | "hrvRmssd";
 

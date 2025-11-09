@@ -1,4 +1,4 @@
-"""MediaPipe-based 30-second window analyzer used by all CV endpoints."""
+"""MediaPipe-based 15-second window analyzer used by all CV endpoints."""
 
 from __future__ import annotations
 
@@ -559,6 +559,8 @@ class WindowAnalyzer:
         end: float,
         threshold: float,
     ) -> list[tuple[float, float, float]]:
+        """Detect yawns from the MAR signal using the same heuristics as the JS demo."""
+
         events: list[tuple[float, float, float]] = []
         active = False
         candidate_start: float | None = None
@@ -569,39 +571,44 @@ class WindowAnalyzer:
 
         for sample in samples:
             t = max(start, min(end, sample.time))
-            mar = sample.mar or 0.0
+            mar = sample.mar
+            has_sample = mar is not None
+            mar_value = mar or 0.0
             high_conf = sample.has_face and sample.confidence >= self.config.confidence_threshold
-            above = high_conf and mar > threshold
+            above = bool(has_sample and mar_value > threshold)
+            can_start = above and high_conf
+            can_end = has_sample or not high_conf
 
             if not active:
-                if above and t - last_end >= self.config.yawn_refractory:
-                    candidate_start = candidate_start or t
+                if can_start and t - last_end >= self.config.yawn_refractory:
+                    if candidate_start is None:
+                        candidate_start = t
                     if t - candidate_start >= self.config.yawn_start_hold:
                         active = True
-                        peak = mar
+                        peak = mar_value
                         start_time = candidate_start
                         candidate_start = None
-                else:
+                elif not above:
                     candidate_start = None
             else:
                 if above:
-                    peak = max(peak, mar)
+                    peak = max(peak, mar_value)
                     end_candidate = None
-                else:
+                elif can_end:
                     end_candidate = end_candidate or t
-                    if (
-                        t - end_candidate >= self.config.yawn_end_hold
-                        and start_time is not None
-                    ):
-                        events.append((start_time, end_candidate, peak))
-                        last_end = end_candidate
+                    if t - end_candidate >= self.config.yawn_end_hold and start_time is not None:
+                        end_time = min(end, t)
+                        events.append((start_time, end_time, peak))
+                        last_end = end_time
                         active = False
                         peak = 0.0
-                        end_candidate = None
                         start_time = None
+                        end_candidate = None
+                        candidate_start = None
 
         if active and start_time is not None:
-            events.append((start_time, end, peak))
+            end_time = end
+            events.append((start_time, end_time, peak))
         return events
 
     @staticmethod
