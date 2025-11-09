@@ -21,22 +21,22 @@ type StateApiResponse = {
 };
 
 const SIGNAL_LABELS: Record<string, string> = {
-  perclos_30s: "PERCLOS",
-  yawn_duty_30s: "Yawning duty",
-  yawn_count_30s: "Yawns",
-  droop_duty_30s: "Head droop",
-  droop_time_30s: "Head droop time",
-  pitchdown_max_30s: "Head pitch max",
-  pitchdown_avg_30s: "Head pitch avg",
+  perclos_15s: "PERCLOS",
+  yawn_duty_15s: "Yawning duty",
+  yawn_count_15s: "Yawns",
+  droop_duty_15s: "Head droop",
+  droop_time_15s: "Head droop time",
+  pitchdown_max_15s: "Head pitch max",
+  pitchdown_avg_15s: "Head pitch avg",
   pitch_thresh_Tp: "Head threshold",
   confidence: "Confidence",
   fps: "FPS",
 };
 
-const PERCENT_SIGNALS = new Set(["perclos_30s", "yawn_duty_30s", "droop_duty_30s"]);
+const PERCENT_SIGNALS = new Set(["perclos_15s", "yawn_duty_15s", "droop_duty_15s"]);
 
-const SAMPLE_INTERVAL_SECONDS = 30;
-const MIN_REQUIRED_SAMPLES = 3;
+const SAMPLE_INTERVAL_SECONDS = 15;
+const MIN_REQUIRED_SAMPLES = 2;
 const MIN_ANALYSIS_DURATION = SAMPLE_INTERVAL_SECONDS * MIN_REQUIRED_SAMPLES;
 
 const getStopThreshold = (videoDuration: number | null): number => {
@@ -79,24 +79,24 @@ const formatStateReason = (reasons?: StateReasonPayload[]): string | undefined =
   return `${label} ${valueText} ${primary.relation} ${thresholdText}`;
 };
 
-type VarKey = "perclos" | "headDownDegrees" | "yawnCount30s" | "heartRate" | "hrvRmssd";
+type VarKey = "perclos" | "headDownDegrees" | "yawnCount15s" | "heartRate" | "hrvRmssd";
 
 export type AnalysisResult = {
   ts_end: string;
   session_id: string;
   driver_id: string;
   PERCLOS: number;
-  perclos_30s: number;
+  perclos_15s: number;
   ear_thresh_T: number;
-  pitchdown_avg_30s: number;
-  pitchdown_max_30s: number;
-  droop_time_30s: number;
-  droop_duty_30s: number;
+  pitchdown_avg_15s: number;
+  pitchdown_max_15s: number;
+  droop_time_15s: number;
+  droop_duty_15s: number;
   pitch_thresh_Tp: number;
-  yawn_count_30s: number;
-  yawn_time_30s: number;
-  yawn_duty_30s: number;
-  yawn_peak_30s: number;
+  yawn_count_15s: number;
+  yawn_time_15s: number;
+  yawn_duty_15s: number;
+  yawn_peak_15s: number;
   confidence: string;
   fps: number;
   driver_state?: DriverStatus;
@@ -104,6 +104,8 @@ export type AnalysisResult = {
   driver_state_reason?: string;
   driver_state_confidence?: string;
   driver_risk_score?: number;
+  hr_bpm?: number;
+  hrv_rmssd_ms?: number;
 };
 
 type CachedAnalysisResult = AnalysisResult & {
@@ -229,6 +231,8 @@ export const useStore = create<Store>((set, get) => ({
     const videoLimit = get().videoDuration;
     const stopThreshold = getStopThreshold(videoLimit);
     
+    console.log(`[Timer] Video duration: ${videoLimit}s, stop threshold: ${stopThreshold}s`);
+    
     // Pre-schedule all API calls for deterministic execution
     const scheduledCalls: ScheduledCall[] = [];
     for (let timestamp = SAMPLE_INTERVAL_SECONDS; timestamp <= stopThreshold; timestamp += SAMPLE_INTERVAL_SECONDS) {
@@ -238,6 +242,8 @@ export const useStore = create<Store>((set, get) => ({
         attempts: 0,
       });
     }
+    
+    console.log(`[Timer] Scheduled ${scheduledCalls.length} API calls for timestamps:`, scheduledCalls.map(c => `${c.timestamp}s`));
 
     set({ 
       appStartTime: startTime, 
@@ -249,7 +255,6 @@ export const useStore = create<Store>((set, get) => ({
       completedCalls: new Set<number>(),
     });
 
-    console.log(`[Timer] Scheduled ${scheduledCalls.length} API calls:`, scheduledCalls.map(c => c.timestamp));
 
     // Update elapsed time every second and manage API calls
     globalTimerInterval = window.setInterval(() => {
@@ -292,7 +297,7 @@ export const useStore = create<Store>((set, get) => ({
         const allCallsCompleted = state.callTracker.scheduledCalls.every(
           call => call.status === 'completed'
         );
-        if (allCallsCompleted || elapsed >= stopThreshold + 30) {
+        if (allCallsCompleted || elapsed >= stopThreshold + 15) {
           console.log(`[Timer] Stopping - elapsed: ${elapsed}s, completed: ${allCallsCompleted}`);
           get().stopGlobalTimer();
         }
@@ -370,6 +375,12 @@ export const useStore = create<Store>((set, get) => ({
     if (currentTime <= 0) {
       return;
     }
+    
+    // Safety check: don't analyze beyond video duration
+    if (state.videoDuration && currentTime > state.videoDuration) {
+      console.log(`[VideoAnalysis] Skipping analysis for ${currentTime}s - beyond video duration (${state.videoDuration}s)`);
+      return;
+    }
 
     // Check cache first - return cached result immediately
     const cachedResult = state.analysisCache[cacheKey];
@@ -430,17 +441,17 @@ export const useStore = create<Store>((set, get) => ({
           ts_end: result.ts_end,
           session_id: result.session_id ?? sessionId,
           driver_id: result.driver_id ?? "demo_driver",
-          perclos_30s: result.perclos_30s,
+          perclos_15s: result.perclos_15s,
           ear_thresh_T: result.ear_thresh_T,
-          pitchdown_avg_30s: result.pitchdown_avg_30s,
-          pitchdown_max_30s: result.pitchdown_max_30s,
-          droop_time_30s: result.droop_time_30s,
-          droop_duty_30s: result.droop_duty_30s,
+          pitchdown_avg_15s: result.pitchdown_avg_15s,
+          pitchdown_max_15s: result.pitchdown_max_15s,
+          droop_time_15s: result.droop_time_15s,
+          droop_duty_15s: result.droop_duty_15s,
           pitch_thresh_Tp: result.pitch_thresh_Tp,
-          yawn_count_30s: result.yawn_count_30s,
-          yawn_time_30s: result.yawn_time_30s,
-          yawn_duty_30s: result.yawn_duty_30s,
-          yawn_peak_30s: result.yawn_peak_30s,
+          yawn_count_15s: result.yawn_count_15s,
+          yawn_time_15s: result.yawn_time_15s,
+          yawn_duty_15s: result.yawn_duty_15s,
+          yawn_peak_15s: result.yawn_peak_15s,
           confidence: result.confidence,
           fps: result.fps,
         };
@@ -465,6 +476,50 @@ export const useStore = create<Store>((set, get) => ({
         console.warn("[VideoAnalysis] Failed to classify driver state:", stateError);
       }
 
+      // Fetch HR and HRV data from simulation API
+      let heartRate: number | undefined;
+      let heartRateVariability: number | undefined;
+
+      try {
+        const vitalsPayload = {
+          session_id: sessionId,
+          driver_id: "demo_driver",
+          state: driverStateLabel || "Lucid",
+          seed: null,
+          widen_for_low_conf: false,
+        };
+
+        const hrResponse = await fetch("http://localhost:8000/v1/sim/hr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(vitalsPayload),
+        });
+
+        if (hrResponse.ok) {
+          const hrData = await hrResponse.json();
+          heartRate = hrData.hr_bpm;
+          console.log(`[VideoAnalysis] HR data for ${currentTime}s:`, hrData.hr_bpm, "bpm");
+        } else {
+          console.warn("[VideoAnalysis] HR endpoint responded with status", hrResponse.status);
+        }
+
+        const hrvResponse = await fetch("http://localhost:8000/v1/sim/hrv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(vitalsPayload),
+        });
+
+        if (hrvResponse.ok) {
+          const hrvData = await hrvResponse.json();
+          heartRateVariability = hrvData.hrv_rmssd_ms;
+          console.log(`[VideoAnalysis] HRV data for ${currentTime}s:`, hrvData.hrv_rmssd_ms, "ms");
+        } else {
+          console.warn("[VideoAnalysis] HRV endpoint responded with status", hrvResponse.status);
+        }
+      } catch (vitalsError) {
+        console.warn("[VideoAnalysis] Failed to fetch vitals data:", vitalsError);
+      }
+
       const enhancedResult: AnalysisResult = {
         ...result,
         driver_state: driverState,
@@ -472,6 +527,8 @@ export const useStore = create<Store>((set, get) => ({
         driver_state_reason: driverStateReason,
         driver_state_confidence: driverStateConfidence,
         driver_risk_score: driverRiskScore,
+        hr_bpm: heartRate,
+        hrv_rmssd_ms: heartRateVariability,
       };
 
       // Create cached result

@@ -23,12 +23,15 @@ export default function App() {
   useEffect(() => {
     fetchTrucks();
     loadThresholds();
-    fetchVideoInfo(); // Auto-detect video file in footage directory
+    const initializeAnalysis = async () => {
+      await fetchVideoInfo(); // Auto-detect video file in footage directory
+      startGlobalTimer(); // Start after video info is loaded
+    };
+    
+    initializeAnalysis();
+    
     const stopT = startTelemetry();
     const stopA = startAlerts();
-    
-    // Start global timer for video analysis
-    startGlobalTimer();
     
     return () => {
       stopT?.();

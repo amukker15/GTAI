@@ -182,10 +182,6 @@ export default function AppHeader() {
                 className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(15,23,42))_drop-shadow(-1px_0_0_rgb(15,23,42))_drop-shadow(0_1px_0_rgb(15,23,42))_drop-shadow(0_-1px_0_rgb(15,23,42))_drop-shadow(1px_1px_0_rgb(15,23,42))_drop-shadow(-1px_-1px_0_rgb(15,23,42))_drop-shadow(1px_-1px_0_rgb(15,23,42))_drop-shadow(-1px_1px_0_rgb(15,23,42))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
               />
             </button>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Last update</p>
-              <p className="text-xs font-semibold text-slate-900 dark:text-white">{secondsSinceLastApiCall}s</p>
-            </div>
           </div>
 
           {/* Navigation - Center */}

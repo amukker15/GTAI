@@ -69,19 +69,20 @@ class VideoAnalysisService {
 
     this.driverId = driverId || "demo_driver";
     this.isRunning = true;
-    this.currentTimestamp = 30; // Start at 30 seconds
+    this.currentTimestamp = 15; // Start at 15 seconds
 
     console.log(`[VideoAnalysis] Starting analysis for driver ${this.driverId}, session ${this.sessionId}`);
 
     // Run first analysis immediately
     await this.performAnalysis();
 
-    // Set up 30-second interval
-    this.intervalId = window.setInterval(async () => {
-      if (this.isRunning) {
-        await this.performAnalysis();
-      }
-    }, 30000);
+    // Note: Automatic interval disabled - analysis is now managed by store.ts
+    // Set up 15-second interval
+    // this.intervalId = window.setInterval(async () => {
+    //   if (this.isRunning) {
+    //     await this.performAnalysis();
+    //   }
+    // }, 15000);
   }
 
   async stopAnalysis(): Promise<void> {
@@ -168,7 +169,7 @@ class VideoAnalysisService {
       }
       
       // Increment timestamp for next analysis
-      this.currentTimestamp += 30;
+      this.currentTimestamp += 15;
       
     } catch (error) {
       console.error(`[VideoAnalysis] Analysis failed at ${this.currentTimestamp}s:`, error);

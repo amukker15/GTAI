@@ -165,7 +165,7 @@
           <input id="driverId" name="driverId" type="text" />
         </div>
       </div>
-      <button type="submit">Run 30s Analysis</button>
+      <button type="submit">Run 15s Analysis</button>
       <div class="status" id="status"></div>
     </form>
 
@@ -183,7 +183,7 @@
           <h2>PERCLOS</h2>
           <dl>
             <dt>PERCLOS (%)</dt><dd id="perclosPct">--</dd>
-            <dt>perclos_30s</dt><dd id="perclosFrac">--</dd>
+            <dt>perclos_15s</dt><dd id="perclosFrac">--</dd>
             <dt>ear_thresh_T</dt><dd id="earThresh">--</dd>
           </dl>
         </article>
@@ -272,17 +272,17 @@
       sessionOut: 'session_id',
       driverOut: 'driver_id',
       perclosPct: 'PERCLOS',
-      perclosFrac: 'perclos_30s',
+      perclosFrac: 'perclos_15s',
       earThresh: 'ear_thresh_T',
-      pitchAvg: 'pitchdown_avg_30s',
-      pitchMax: 'pitchdown_max_30s',
-      droopTime: 'droop_time_30s',
-      droopDuty: 'droop_duty_30s',
+      pitchAvg: 'pitchdown_avg_15s',
+      pitchMax: 'pitchdown_max_15s',
+      droopTime: 'droop_time_15s',
+      droopDuty: 'droop_duty_15s',
       pitchThresh: 'pitch_thresh_Tp',
-      yawnCount: 'yawn_count_30s',
-      yawnTime: 'yawn_time_30s',
-      yawnDuty: 'yawn_duty_30s',
-      yawnPeak: 'yawn_peak_30s',
+      yawnCount: 'yawn_count_15s',
+      yawnTime: 'yawn_time_15s',
+      yawnDuty: 'yawn_duty_15s',
+      yawnPeak: 'yawn_peak_15s',
       confidence: 'confidence',
       fps: 'fps',
     };
@@ -298,7 +298,7 @@
 
       const submitBtn = form.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
-      statusEl.textContent = 'Uploading clip and running 30s analysis…';
+      statusEl.textContent = 'Uploading clip and running 15s analysis…';
 
       const data = new FormData();
       data.append('video', fileInput.files[0]);
@@ -396,17 +396,17 @@
         ts_end: windowPayload.ts_end,
         session_id: ensureId(windowPayload.session_id, 'session-unknown'),
         driver_id: ensureId(windowPayload.driver_id, 'driver-unknown'),
-        perclos_30s: windowPayload.perclos_30s,
+        perclos_15s: windowPayload.perclos_15s,
         ear_thresh_T: windowPayload.ear_thresh_T,
-        pitchdown_avg_30s: windowPayload.pitchdown_avg_30s,
-        pitchdown_max_30s: windowPayload.pitchdown_max_30s,
-        droop_time_30s: windowPayload.droop_time_30s,
-        droop_duty_30s: windowPayload.droop_duty_30s,
+        pitchdown_avg_15s: windowPayload.pitchdown_avg_15s,
+        pitchdown_max_15s: windowPayload.pitchdown_max_15s,
+        droop_time_15s: windowPayload.droop_time_15s,
+        droop_duty_15s: windowPayload.droop_duty_15s,
         pitch_thresh_Tp: windowPayload.pitch_thresh_Tp,
-        yawn_count_30s: windowPayload.yawn_count_30s,
-        yawn_time_30s: windowPayload.yawn_time_30s,
-        yawn_duty_30s: windowPayload.yawn_duty_30s,
-        yawn_peak_30s: windowPayload.yawn_peak_30s,
+        yawn_count_15s: windowPayload.yawn_count_15s,
+        yawn_time_15s: windowPayload.yawn_time_15s,
+        yawn_duty_15s: windowPayload.yawn_duty_15s,
+        yawn_peak_15s: windowPayload.yawn_peak_15s,
         confidence: windowPayload.confidence,
         fps: windowPayload.fps,
       };
@@ -438,7 +438,7 @@
 
     async function fetchVitals(buttonId) {
       if (!lastWindowPayload) {
-        alert('Run the 30-second analysis first.');
+        alert('Run the 15-second analysis first.');
         return;
       }
       if (!lastStatePayload) {
