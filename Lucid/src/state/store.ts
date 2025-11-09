@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Alert, Telemetry, Thresholds, Truck } from "../lib/types";
-import { getAlerts, getTelemetry, getThresholds, saveThresholds, getTrucks } from "../api/mock";
+import { DRIVERS, getRouteById } from "../api/referenceData";
 import type { DriverStatus } from "../lib/status";
 
 type StateReasonPayload = {
@@ -182,50 +182,38 @@ export const useStore = create<Store>((set, get) => ({
   completedCalls: new Set<number>(),
 
   fetchTrucks: async () => {
-    const t = await getTrucks();
-    set({ trucks: t });
+    // Build trucks from static reference data
+    const trucks: Truck[] = DRIVERS.map((driver) => {
+      const route = getRouteById(driver.routeId);
+      return {
+        id: driver.truckId,
+        driverName: driver.driverName,
+        company: driver.company ?? "Lucid Freight",
+        route: route ? { from: route.from, to: route.to } : { from: "", to: "" },
+        path: [],
+      };
+    });
+    set({ trucks });
   },
 
   pollTelemetry: () => {
-    let cancelled = false;
-    const pull = async () => {
-      const all = await getTelemetry();
-      const map: Record<string, Telemetry[]> = {};
-      all.forEach((it) => {
-        (map[it.truckId] ||= []).push(it);
-      });
-      if (!cancelled) set({ telemetryByTruckId: map });
-    };
-    pull();
-    const id = setInterval(pull, 30000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+    // No mock telemetry - return empty cleanup function
+    return () => {};
   },
 
   pollAlerts: () => {
-    let cancelled = false;
-    const pull = async () => {
-      const a = await getAlerts();
-      if (!cancelled) set({ alerts: a });
-    };
-    pull();
-    const id = setInterval(pull, 30000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+    // No mock alerts - return empty cleanup function
+    return () => {};
   },
 
   loadThresholds: async () => {
-    const th = await getThresholds();
-    set({ thresholds: th });
+    // No mock thresholds - set to null
+    set({ thresholds: null });
   },
 
   saveThresholds: async (t) => {
-    const saved = await saveThresholds(t);
-    set({ thresholds: saved });
+    // Just set the provided thresholds
+    set({ thresholds: t });
   },
 
   setSelectedVar: (v) => set({ selectedVar: v }),
