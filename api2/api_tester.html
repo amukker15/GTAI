@@ -303,6 +303,7 @@
       const data = new FormData();
       data.append('video', fileInput.files[0]);
       data.append('timestamp', document.getElementById('timestamp').value);
+      data.append('disable_cache', 'true');
       const sessionVal = document.getElementById('sessionId').value;
       const driverVal = document.getElementById('driverId').value;
       if (sessionVal) data.append('session_id', sessionVal);

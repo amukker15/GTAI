@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timezone
 from typing import Any
 
 try:
@@ -28,7 +29,6 @@ except Exception:
     pass
 
 import snowflake.connector
-from datetime import datetime, date
 
 
 def require_env(name: str) -> str:
@@ -37,6 +37,57 @@ def require_env(name: str) -> str:
         print(f"ERROR: environment variable {name} is required", file=sys.stderr)
         sys.exit(2)
     return v
+
+
+def insert_measurement_row(
+    cur,
+    conn,
+    database: str | None,
+    schema: str | None,
+    payload: dict[str, Any],
+    fallback_driver: str,
+    fallback_session: str,
+    ts_seconds: int,
+) -> None:
+    """Insert an aggregate window payload into DROWSINESS_MEASUREMENTS."""
+
+    driver_value = payload.get("driver_id") or fallback_driver or "demo_driver"
+    session_value = payload.get("session_id") or fallback_session or f"{driver_value}_session"
+    ts_value = payload.get("ts_end")
+    if not ts_value:
+        ts_value = datetime.now(timezone.utc).isoformat()
+
+    measurement = {
+        "driver_id": driver_value,
+        "session_id": session_value,
+        "ts": ts_value,
+        "perclos": payload.get("perclos_30s"),
+        "perclos_percent": payload.get("PERCLOS"),
+        "ear_threshold": payload.get("ear_thresh_T"),
+        "pitchdown_avg": payload.get("pitchdown_avg_30s"),
+        "pitchdown_max": payload.get("pitchdown_max_30s"),
+        "droop_time": payload.get("droop_time_30s"),
+        "droop_duty": payload.get("droop_duty_30s"),
+        "pitch_threshold": payload.get("pitch_thresh_Tp"),
+        "yawn_count": payload.get("yawn_count_30s"),
+        "yawn_time": payload.get("yawn_time_30s"),
+        "yawn_duty": payload.get("yawn_duty_30s"),
+        "yawn_peak": payload.get("yawn_peak_30s"),
+        "confidence": payload.get("confidence"),
+        "fps": payload.get("fps"),
+    }
+
+    table_parts = [p for p in (database, schema, "DROWSINESS_MEASUREMENTS") if p]
+    table_name = ".".join(table_parts) if table_parts else "DROWSINESS_MEASUREMENTS"
+    columns = ",".join(measurement.keys())
+    placeholders = ",".join(["%s"] * len(measurement))
+    sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+    cur.execute(sql, list(measurement.values()))
+    conn.commit()
+    print(
+        f"[Snowflake] Inserted row for driver={driver_value}, session={session_value}, "
+        f"timestamp={ts_value}, window={ts_seconds}s"
+    )
 
 
 def main() -> None:
@@ -161,10 +212,7 @@ def main() -> None:
                 except Exception as e:
                     print(f"Could not query {name}: {e}")
 
-            # --- api_tester-style upload: POST a local footage file to /api/window ---
-            # After receiving the JSON payload back from the API, prompt for a
-            # driver_id and insert a drowsiness measurement row into
-            # DROWSINESS_MEASUREMENTS using selected fields from the JSON.
+            # --- Batch upload: post every video to /api/window to populate Snowflake ---
             try:
                 import requests
             except Exception:
@@ -173,112 +221,98 @@ def main() -> None:
                 from pathlib import Path
                 import json
 
-                # locate footage directory relative to this script
+                # Locate the videos directory relative to this script
                 script_dir = Path(__file__).parent
-                footage_dir = script_dir.parent / "footage"
-                video_file = None
-                if footage_dir.exists():
-                    for ext in ("*.mp4", "*.mov", "*.avi", "*.mkv", "*.mpg", "*.webm"):
-                        matches = list(footage_dir.glob(ext))
-                        if matches:
-                            video_file = matches[0]
-                            break
-
-                if not video_file:
-                    print("\nNo video file found in footage/; skipping API tester upload.")
+                videos_dir = script_dir.parent / "videos"
+                if not videos_dir.exists():
+                    print("\nNo videos directory found; skipping API uploads.")
                 else:
+                    truck_map = {
+                        "sample1.mov": "LF-101",
+                        "sample2.mp4": "LF-202",
+                        "sample3.mov": "LF-303",
+                        "sample4.mov": "LF-404",
+                    }
+                    ping_seconds = (30, 60, 90)
+                    allowed_exts = {".mp4", ".mov", ".avi", ".mkv", ".mpg", ".webm"}
                     base_url = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip('/')
                     upload_url = f"{base_url}/api/window"
-                    print(f"\nUploading {video_file.name} to {upload_url} with timestamp=35")
-                    try:
-                        with open(video_file, 'rb') as fh:
-                            files = {'video': (video_file.name, fh, 'application/octet-stream')}
-                            data = {'timestamp': '35', 'session_id': 'api_tester_local', 'driver_id': 'test_driver'}
-                            resp = requests.post(upload_url, files=files, data=data, timeout=120)
-                        try:
-                            resp.raise_for_status()
-                        except Exception as re:
-                            print(f"Upload failed: {re} (status {resp.status_code})")
-                            try:
-                                print(resp.text)
-                            except Exception:
-                                pass
-                        else:
-                            try:
-                                payload = resp.json()
-                                print("API /api/window response JSON:")
-                                print(json.dumps(payload, indent=2))
-                            except Exception:
-                                print("Upload succeeded but response was not JSON:")
-                                print(resp.text)
-                                payload = None
+                    processed = 0
 
-                            # If we have a JSON payload, prompt for driver_id and insert
-                            # a row into DROWSINESS_MEASUREMENTS using selected fields.
-                            if payload:
-                                # Ask the user which driver this belongs to
+                    video_files = sorted(
+                        [p for p in videos_dir.iterdir() if p.is_file() and p.suffix.lower() in allowed_exts],
+                        key=lambda p: p.name,
+                    )
+
+                    if not video_files:
+                        print("\nNo video files found in videos/; skipping API uploads.")
+                    else:
+                        print(f"\nUploading {len(video_files)} videos to {upload_url} at timestamps {ping_seconds}")
+                        for video_path in video_files:
+                            truck_id = truck_map.get(video_path.name)
+                            if not truck_id:
+                                print(f"Skipping {video_path.name}: no truck mapping provided.")
+                                continue
+
+                            session_id = f"{truck_id}_{video_path.stem}"
+                            for ts in ping_seconds:
+                                print(f"\nUploading {video_path.name} for truck {truck_id} at t={ts}s")
                                 try:
-                                    driver_id = input("Enter driver_id to associate with this measurement: ").strip()
-                                except Exception:
-                                    driver_id = ''
-
-                                if not driver_id:
-                                    print("No driver_id provided; skipping DB insert.")
-                                else:
-                                    # Prepare measurement values from the payload. Use None
-                                    # for missing keys so Snowflake will store NULL.
-                                    def _float_or_none(x):
+                                    with open(video_path, "rb") as fh:
+                                        files = {"video": (video_path.name, fh, "application/octet-stream")}
+                                        data = {
+                                            "timestamp": str(ts),
+                                            "session_id": session_id,
+                                            "driver_id": truck_id,
+                                        }
+                                        resp = requests.post(upload_url, files=files, data=data, timeout=180)
+                                    resp.raise_for_status()
+                                except Exception as exc:
+                                    resp_obj = getattr(exc, "response", None)
+                                    code = getattr(resp_obj, "status_code", "n/a")
+                                    print(f"Upload failed for {video_path.name} @ {ts}s: {exc} (status {code})")
+                                    if resp_obj is not None:
                                         try:
-                                            return None if x is None else float(x)
+                                            print(resp_obj.text)
                                         except Exception:
-                                            return None
+                                            pass
+                                    continue
 
-                                    def _int_or_none(x):
-                                        try:
-                                            return None if x is None else int(x)
-                                        except Exception:
-                                            return None
-
-                                    fields = [
-                                        'perclos_30s',
-                                        'pitchdown_avg_30s',
-                                        'pitchdown_max_30s',
-                                        'droop_time_30s',
-                                        'droop_duty_30s',
-                                        'yawn_count_30s',
-                                        'yawn_time_30s',
-                                        'yawn_duty_30s',
-                                        'yawn_peak_30s',
-                                    ]
-
-                                    values = []
-                                    for f in fields:
-                                        v = payload.get(f)
-                                        if f == 'yawn_count_30s':
-                                            values.append(_int_or_none(v))
-                                        else:
-                                            values.append(_float_or_none(v))
-
-                                    # Add driver_id and current timestamp at the front
-                                    measured_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-
-                                    insert_cols = ['driver_id', 'timestamp'] + fields
-                                    insert_vals = [driver_id, measured_at] + values
-
-                                    placeholders = ",".join(["%s"] * len(insert_cols))
-                                    cols_join = ",".join(insert_cols)
-                                    insert_sql = f"INSERT INTO {database}.{schema}.DROWSINESS_MEASUREMENTS ({cols_join}) VALUES ({placeholders})"
+                                processed += 1
+                                try:
+                                    payload = resp.json()
                                     try:
-                                        cur.execute(insert_sql, insert_vals)
-                                        print(f"Inserted measurement into DROWSINESS_MEASUREMENTS, rowcount={cur.rowcount}")
-                                        # show new count
-                                        cur.execute(meas_q)
-                                        newc = cur.fetchone()[0]
-                                        print(f"DROWSINESS_MEASUREMENTS rows after insert: {newc}")
-                                    except Exception as ie:
-                                        print(f"Failed to insert measurement: {ie}")
-                    except Exception as e:
-                        print(f"Error uploading file to API tester: {e}")
+                                        insert_measurement_row(
+                                            cur,
+                                            conn,
+                                            database,
+                                            schema,
+                                            payload,
+                                            truck_id,
+                                            session_id,
+                                            ts,
+                                        )
+                                    except Exception as db_exc:
+                                        print(
+                                            f"[Snowflake] Insert failed for session {session_id} at {ts}s: {db_exc}"
+                                        )
+                                    # Show a concise summary so we know the analysis succeeded.
+                                    perclos = payload.get("perclos_30s")
+                                    yawn_count = payload.get("yawn_count_30s")
+                                    print(
+                                        f"Success -> session={session_id}, timestamp={ts}, "
+                                        f"perclos_30s={perclos}, yawn_count_30s={yawn_count}"
+                                    )
+                                    print(json.dumps({"driver_id": truck_id, "session_id": session_id}, indent=2))
+                                except Exception:
+                                    print("Upload succeeded but response was not JSON:")
+                                    try:
+                                        print(resp.text)
+                                    except Exception:
+                                        pass
+
+                        if processed == 0:
+                            print("\nNo API uploads were completed successfully.")
         finally:
             cur.close()
     finally:
@@ -287,4 +321,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    

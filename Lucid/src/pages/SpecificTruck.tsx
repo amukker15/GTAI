@@ -1,6 +1,6 @@
 // src/pages/TruckDetail.tsx
 import { useParams } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "../state/store";
 import type { AnalysisResult } from "../state/store";
 import type { LatLngTuple, LatLngBoundsExpression } from "leaflet";
@@ -168,9 +168,6 @@ const PerclosTooltip = ({ active, payload }: TooltipProps) => {
         <p>Confidence: {point.confidence} · FPS: {point.fps}</p>
         <p>Bucket: {point.intervalLabel}</p>
       </div>
-      {point.dimPoint && (
-        <p className="mt-1 text-[11px] font-semibold text-amber-500">⚠️ Low confidence frame</p>
-      )}
     </div>
   );
 };
@@ -188,9 +185,6 @@ const HeadPoseTooltip = ({ active, payload }: TooltipProps) => {
         <p>Droop duty: {(point.droop_duty_30s * 100).toFixed(1)}% · Droop time: {point.droop_time_30s.toFixed(1)}s</p>
         <p>Confidence: {point.confidence} · FPS: {point.fps}</p>
       </div>
-      {point.dimPoint && (
-        <p className="mt-1 text-[11px] font-semibold text-amber-500">⚠️ Sensor quality dip</p>
-      )}
     </div>
   );
 };
@@ -285,6 +279,8 @@ const YawnCountLabel = ({ x, y, value }: LabelPropsLite) => {
   );
 };
 
+type ChartTab = 'perclos' | 'headpose' | 'yawning';
+
 export default function TruckDetail() {
   const { truckId = "" } = useParams();
   const truck = useStore((s) => s.trucks.find((t: Truck) => t.id === truckId));
@@ -292,7 +288,14 @@ export default function TruckDetail() {
   const thresholds = useStore((s) => s.thresholds) as Thresholds | null;
   const analysisResults = useStore((s) => s.analysisResults);
   const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
+  const getAnalysisProgress = useStore((s) => s.getAnalysisProgress);
   const { darkMode } = useDarkMode();
+
+  // Chart tab state
+  const [activeChartTab, setActiveChartTab] = useState<ChartTab>('perclos');
+
+  // Get analysis progress
+  const analysisProgress = getAnalysisProgress();
 
   // Local UI state
 
@@ -563,133 +566,194 @@ export default function TruckDetail() {
                   </p>
                 </div>
               </div>
-              <div className="px-4 py-4 space-y-4">
-                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-900/30">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">PERCLOS chart</p>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Eye closure · % of last 30s</p>
-                    </div>
-                    <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
-                      {perclosPercent !== null ? `${perclosPercent}%` : "—"}
-                    </div>
-                  </div>
-                  <div className="h-[220px] w-full">
-                    {timelinePoints.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-                          <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
-                          <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}%`} width={45} />
-                          <Tooltip content={<PerclosTooltip />} />
-                          <Line
-                            type="monotone"
-                            dataKey="perclosPercent"
-                            stroke={lineColor}
-                            strokeWidth={2}
-                            dot={<StatusDot />}
-                            isAnimationActive={false}
-                          />
-                        </ReLineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      renderChartPlaceholder()
+              <div className="px-4 py-4">
+                {/* Chart Tab Navigation */}
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={() => setActiveChartTab('perclos')}
+                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      activeChartTab === 'perclos'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    PERCLOS
+                    {perclosPercent !== null && activeChartTab === 'perclos' && (
+                      <span className="ml-2 px-2 py-0.5 text-xs bg-white/70 rounded-full dark:bg-slate-900/70">
+                        {perclosPercent}%
+                      </span>
                     )}
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Points tinted by driver state · tooltips include confidence + fps</p>
+                  </button>
+                  <button
+                    onClick={() => setActiveChartTab('headpose')}
+                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      activeChartTab === 'headpose'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    Head Pose
+                    {headDownDegrees !== null && activeChartTab === 'headpose' && (
+                      <span className="ml-2 px-2 py-0.5 text-xs bg-white/70 rounded-full dark:bg-slate-900/70">
+                        {headDownDegrees.toFixed(0)}°
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveChartTab('yawning')}
+                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      activeChartTab === 'yawning'
+                        ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    Yawning
+                    {yawnCount !== null && activeChartTab === 'yawning' && (
+                      <span className="ml-2 px-2 py-0.5 text-xs bg-white/70 rounded-full dark:bg-slate-900/70">
+                        {yawnCount} yawns
+                      </span>
+                    )}
+                  </button>
                 </div>
 
-                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-900/30">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Head pose chart</p>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Pitch-down vs threshold</p>
-                    </div>
-                    {latestPoint && (
-                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
-                          Droop time: {latestPoint.droop_time_30s.toFixed(1)}s
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
-                          Duty: {latestPoint.droopDutyPercent.toFixed(1)}%
-                        </span>
+                {/* Chart Container */}
+                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-900/30">
+                  {/* PERCLOS Chart */}
+                  {activeChartTab === 'perclos' && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">PERCLOS chart</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Eye closure · % of last 30s</p>
+                        </div>
+                        <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
+                          {perclosPercent !== null ? `${perclosPercent}%` : "—"}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="h-[220px] w-full">
-                    {timelinePoints.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-                          <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
-                          <YAxis tick={{ fill: axisColor, fontSize: 11 }} unit="°" width={45} />
-                          <Tooltip content={<HeadPoseTooltip />} />
-                          <Line
-                            type="monotone"
-                            dataKey="pitchdown_avg_30s"
-                            stroke={headPoseColor}
-                            strokeWidth={2}
-                            dot={<HeadPoseDot />}
-                            isAnimationActive={false}
-                          />
-                          <Line
-                            type="stepAfter"
-                            dataKey="pitch_thresh_Tp"
-                            stroke="#94a3b8"
-                            strokeWidth={1.5}
-                            strokeDasharray="5 5"
-                            dot={false}
-                            isAnimationActive={false}
-                          />
-                        </ReLineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      renderChartPlaceholder()
-                    )}
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Triangles mark buckets where max pitchdown exceeded the threshold</p>
-                </div>
+                      <div className="h-[280px] w-full">
+                        {timelinePoints.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                              <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                              <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                              <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}%`} width={45} />
+                              <Tooltip content={<PerclosTooltip />} />
+                              <Line
+                                type="monotone"
+                                dataKey="perclosPercent"
+                                stroke={lineColor}
+                                strokeWidth={2}
+                                dot={<StatusDot />}
+                                isAnimationActive={false}
+                              />
+                            </ReLineChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          renderChartPlaceholder()
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Points show driver status at each interval</p>
+                    </>
+                  )}
 
-                <div className="rounded-2xl border border-slate-100/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-900/30">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Yawning chart</p>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Duty cycle · counts annotated</p>
-                    </div>
-                    <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
-                      {yawnCount !== null ? `${yawnCount} yawns` : "—"}
-                    </div>
-                  </div>
-                  <div className="h-[220px] w-full">
-                    {timelinePoints.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
-                          <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
-                          <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}%`} width={45} />
-                          <Tooltip content={<YawningTooltip />} />
-                          <Line
-                            type="monotone"
-                            dataKey="yawnDutyPercent"
-                            stroke={yawLineColor}
-                            strokeWidth={2}
-                            dot={<YawnDot />}
-                            isAnimationActive={false}
-                          >
-                            <LabelList
-                              dataKey="yawn_count_30s"
-                              content={(props: LabelProps) => (
-                                <YawnCountLabel x={props.x} y={props.y} value={props.value as number} />
-                              )}
-                            />
-                          </Line>
-                        </ReLineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      renderChartPlaceholder()
-                    )}
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Numbers above each marker show yawns counted in that 30s slice</p>
+                  {/* Head Pose Chart */}
+                  {activeChartTab === 'headpose' && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Head pose chart</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Pitch-down vs threshold</p>
+                        </div>
+                        {latestPoint && (
+                          <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                              Droop time: {latestPoint.droop_time_30s.toFixed(1)}s
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                              Duty: {latestPoint.droopDutyPercent.toFixed(1)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="h-[280px] w-full">
+                        {timelinePoints.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                              <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                              <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                              <YAxis tick={{ fill: axisColor, fontSize: 11 }} unit="°" width={45} />
+                              <Tooltip content={<HeadPoseTooltip />} />
+                              <Line
+                                type="monotone"
+                                dataKey="pitchdown_avg_30s"
+                                stroke={headPoseColor}
+                                strokeWidth={2}
+                                dot={<HeadPoseDot />}
+                                isAnimationActive={false}
+                              />
+                              <Line
+                                type="stepAfter"
+                                dataKey="pitch_thresh_Tp"
+                                stroke="#94a3b8"
+                                strokeWidth={1.5}
+                                strokeDasharray="5 5"
+                                dot={false}
+                                isAnimationActive={false}
+                              />
+                            </ReLineChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          renderChartPlaceholder()
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Triangles mark buckets where max pitchdown exceeded the threshold</p>
+                    </>
+                  )}
+
+                  {/* Yawning Chart */}
+                  {activeChartTab === 'yawning' && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Yawning chart</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Duty cycle · counts annotated</p>
+                        </div>
+                        <div className="text-right text-sm font-semibold text-slate-900 dark:text-white">
+                          {yawnCount !== null ? `${yawnCount} yawns` : "—"}
+                        </div>
+                      </div>
+                      <div className="h-[280px] w-full">
+                        {timelinePoints.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ReLineChart data={timelinePoints} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                              <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+                              <XAxis dataKey="tsLabel" tick={{ fill: axisColor, fontSize: 11 }} minTickGap={24} tickMargin={6} />
+                              <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(value) => `${value}%`} width={45} />
+                              <Tooltip content={<YawningTooltip />} />
+                              <Line
+                                type="monotone"
+                                dataKey="yawnDutyPercent"
+                                stroke={yawLineColor}
+                                strokeWidth={2}
+                                dot={<YawnDot />}
+                                isAnimationActive={false}
+                              >
+                                <LabelList
+                                  dataKey="yawn_count_30s"
+                                  content={(props: LabelProps) => (
+                                    <YawnCountLabel x={props.x} y={props.y} value={props.value as number} />
+                                  )}
+                                />
+                              </Line>
+                            </ReLineChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          renderChartPlaceholder()
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Numbers above each marker show yawns counted in that 30s slice</p>
+                    </>
+                  )}
                 </div>
               </div>
             </section>
@@ -721,7 +785,7 @@ export default function TruckDetail() {
                 )}
                 {truckAlerts.length > 0 && (
                   <div className="space-y-2">
-                    {truckAlerts.map((a: any, idx: number) => {
+                    {truckAlerts.map((a, idx: number) => {
                       const isCritical = a.status === "ASLEEP";
                       const tint = statusToColor(a.status as DriverStatus);
                       const Icon = isCritical ? AlertCircle : AlertTriangle;
@@ -827,7 +891,7 @@ export default function TruckDetail() {
                 </div>
               </div>
               <div className="px-4 py-3">
-                <VideoPlayer className="h-[160px] w-full" />
+                <VideoPlayer className="h-[280px] w-full" />
               </div>
             </section>
           </div>

@@ -23,6 +23,7 @@ class RunStats:
     total_frames: int = 0
     detected_frames: int = 0
     high_conf_frames: int = 0
+    interpolated_samples: int = 0
 
 
 class WindowAnalyzer:
@@ -32,8 +33,8 @@ class WindowAnalyzer:
             static_image_mode=False,
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_detection_confidence=0.3,  # Lower for glasses/lighting issues
+            min_tracking_confidence=0.7,   # Higher for better temporal continuity
         )
 
     def analyze(
@@ -126,6 +127,14 @@ class WindowAnalyzer:
                 )
             )
 
+        # Apply temporal interpolation to fill missing EAR values
+        original_samples = samples.copy()
+        samples = self._interpolate_missing_values(samples)
+        
+        # Track interpolation statistics
+        stats.interpolated_samples = sum(1 for orig, new in zip(original_samples, samples) 
+                                       if orig.ear is None and new.ear is not None)
+        
         return samples, stats
 
     def _summarize(
@@ -139,9 +148,44 @@ class WindowAnalyzer:
         end: float,
     ) -> AnalysisSummary:
         window = max(1e-6, end - start)
-        ears = [s.ear for s in samples if s.ear is not None]
+        # Collect EAR samples with different quality levels for robust thresholding
+        high_conf_ears = [
+            s.ear for s in samples
+            if s.ear is not None
+            and s.has_face
+            and s.confidence >= self.config.confidence_threshold
+        ]
+        
+        neutral_ears = [
+            s.ear
+            for s in samples
+            if s.ear is not None
+            and s.has_face
+            and s.confidence >= self.config.confidence_threshold
+            and (s.pitch_down is None or s.pitch_down <= self.config.down_pitch_gate_deg)
+        ]
+        
+        moderate_conf_ears = [
+            s.ear for s in samples
+            if s.ear is not None
+            and s.has_face
+            and s.confidence >= 0.4  # Lower threshold for moderate confidence
+        ]
+        
+        all_ears = [s.ear for s in samples if s.ear is not None]
+        
+        # Use best available samples for threshold calculation
+        # Priority: neutral pose + high conf > high conf > moderate conf > all
+        if len(neutral_ears) >= 10:  # Need sufficient samples
+            ear_samples = neutral_ears
+        elif len(high_conf_ears) >= 10:
+            ear_samples = high_conf_ears
+        elif len(moderate_conf_ears) >= 5:
+            ear_samples = moderate_conf_ears
+        else:
+            ear_samples = all_ears
         ear_thresh = self._adaptive_threshold(
-            ears,
+            ear_samples,
             self.config.ear_threshold_default,
             self.config.ear_threshold_bounds,
             self.config.ear_threshold_percentile,
@@ -150,7 +194,7 @@ class WindowAnalyzer:
             samples,
             start,
             end,
-            lambda s: (s.ear is not None and s.ear < ear_thresh) or (s.pitch_down is not None and s.pitch_down >= 10.0),
+            lambda sample: self._is_eye_closed(sample, ear_thresh),
         )
         perclos_ratio = perclos_time / window
 
@@ -188,6 +232,18 @@ class WindowAnalyzer:
         )
         confidence_label = "OK" if high_conf_ratio >= 0.6 else "Low"
         fps_observed = stats.total_frames / window
+        
+        # Calculate quality metrics for PERCLOS assessment
+        valid_ear_samples = sum(1 for s in samples if s.ear is not None)
+        total_samples = len(samples)
+        valid_sample_ratio = valid_ear_samples / total_samples if total_samples > 0 else 0.0
+        interpolated_sample_ratio = stats.interpolated_samples / total_samples if total_samples > 0 else 0.0
+        
+        # Calculate overall PERCLOS confidence score
+        perclos_confidence_score = self._calculate_perclos_confidence(
+            valid_sample_ratio, interpolated_sample_ratio, high_conf_ratio, 
+            len(ear_samples), fps_observed
+        )
 
         return AnalysisSummary(
             ts_end_iso=ts_end_iso,
@@ -207,7 +263,107 @@ class WindowAnalyzer:
             yawn_peak=yawn_peak,
             confidence_label=confidence_label,
             fps_observed=fps_observed,
+            valid_sample_ratio=valid_sample_ratio,
+            interpolated_sample_ratio=interpolated_sample_ratio,
+            high_confidence_ratio=high_conf_ratio,
+            perclos_confidence_score=perclos_confidence_score,
         )
+
+    def _interpolate_missing_values(self, samples: list[Sample]) -> list[Sample]:
+        """Interpolate missing EAR values using temporal neighbors for more robust PERCLOS."""
+        if len(samples) < 3:
+            return samples
+        
+        interpolated = []
+        for i, sample in enumerate(samples):
+            if sample.ear is not None or not sample.has_face:
+                # Keep original if EAR is valid or no face detected
+                interpolated.append(sample)
+                continue
+            
+            # Find nearest valid EAR values before and after
+            prev_ear = None
+            next_ear = None
+            
+            # Look backward
+            for j in range(i - 1, -1, -1):
+                if samples[j].ear is not None and samples[j].has_face:
+                    prev_ear = samples[j].ear
+                    break
+            
+            # Look forward  
+            for j in range(i + 1, len(samples)):
+                if samples[j].ear is not None and samples[j].has_face:
+                    next_ear = samples[j].ear
+                    break
+            
+            # Interpolate if we have neighbors
+            interpolated_ear = sample.ear
+            if prev_ear is not None and next_ear is not None:
+                # Linear interpolation
+                interpolated_ear = (prev_ear + next_ear) / 2.0
+            elif prev_ear is not None:
+                # Use previous value with slight decay
+                interpolated_ear = prev_ear * 0.95
+            elif next_ear is not None:
+                # Use next value with slight decay
+                interpolated_ear = next_ear * 0.95
+            
+            # Create new sample with interpolated EAR
+            interpolated_sample = Sample(
+                time=sample.time,
+                ear=interpolated_ear,
+                mar=sample.mar,
+                pitch_down=sample.pitch_down,
+                confidence=max(0.4, sample.confidence),  # Boost confidence slightly for interpolated
+                has_face=sample.has_face,
+            )
+            interpolated.append(interpolated_sample)
+        
+        return interpolated
+
+    def _calculate_perclos_confidence(
+        self, 
+        valid_ratio: float, 
+        interpolated_ratio: float, 
+        high_conf_ratio: float,
+        threshold_samples: int,
+        fps: float
+    ) -> float:
+        """Calculate overall confidence in PERCLOS measurement based on multiple factors."""
+        confidence = 1.0
+        
+        # Penalize based on missing data
+        if valid_ratio < 0.7:
+            confidence *= 0.6  # Significant penalty for low valid sample ratio
+        elif valid_ratio < 0.9:
+            confidence *= 0.8  # Moderate penalty
+        
+        # Penalize based on interpolation usage
+        if interpolated_ratio > 0.3:
+            confidence *= 0.7  # High interpolation reduces confidence
+        elif interpolated_ratio > 0.1:
+            confidence *= 0.9  # Some interpolation is OK
+        
+        # Penalize based on detection confidence
+        if high_conf_ratio < 0.4:
+            confidence *= 0.5  # Very low detection confidence
+        elif high_conf_ratio < 0.6:
+            confidence *= 0.8  # Moderate detection confidence
+        
+        # Penalize if insufficient samples for threshold calculation
+        if threshold_samples < 5:
+            confidence *= 0.6  # Not enough samples for good threshold
+        elif threshold_samples < 10:
+            confidence *= 0.8  # Borderline threshold samples
+        
+        # Penalize very low FPS
+        if fps < 5:
+            confidence *= 0.7  # Very low temporal resolution
+        elif fps < 10:
+            confidence *= 0.9  # Low temporal resolution
+        
+        return max(0.0, min(1.0, confidence))
 
     # --- helpers ---------------------------------------------------------
 
@@ -217,9 +373,25 @@ class WindowAnalyzer:
             la, lb = landmarks[idx_a], landmarks[idx_b]
             return abs(la.y - lb.y)
 
+        # Basic lid spread calculation
         lid_spread = abs(landmarks[159].y - landmarks[145].y)
-        score = (0.4 + lid_spread * 120) if iris_visible else (lid_spread * 80)
-        return clamp(score, 0.0, 1.0)
+        base_score = (0.4 + lid_spread * 120) if iris_visible else (lid_spread * 80)
+        
+        # Boost confidence for glasses scenarios (check nose bridge landmarks)
+        nose_bridge_visible = self._has_landmark(landmarks, 6) and self._has_landmark(landmarks, 9)
+        if nose_bridge_visible and not iris_visible:
+            # Likely wearing glasses - boost confidence
+            base_score *= 1.3
+        
+        # Check for head pose indicators
+        forehead_visible = self._has_landmark(landmarks, 10) and self._has_landmark(landmarks, 151)
+        chin_visible = self._has_landmark(landmarks, 152) and self._has_landmark(landmarks, 175)
+        
+        # If only partial face visible but key landmarks present, still decent confidence
+        if (forehead_visible or chin_visible) and lid_spread > 0.005:
+            base_score = max(base_score, 0.45)
+        
+        return clamp(base_score, 0.0, 1.0)
 
     def _compute_ear(self, landmarks: Sequence) -> float | None:
         pairs = self.config.ear_pairs
@@ -332,6 +504,30 @@ class WindowAnalyzer:
             return default
         thresh = float(np.percentile(values, percentile))
         return clamp(thresh, bounds[0], bounds[1])
+
+    def _is_eye_closed(self, sample: Sample, ear_thresh: float) -> bool:
+        # Enhanced eye closure detection that handles edge cases more accurately
+        # instead of defaulting everything to "closed"
+        if not sample.has_face:
+            # No face detected - this could be head turned away, not necessarily closed eyes
+            # Only count as closed if this persists (handled by temporal logic)
+            return True
+        if sample.ear is None:
+            # Missing EAR - could be detection failure, not closed eyes
+            # Use temporal interpolation if available, otherwise conservative approach
+            return True
+        
+        # For low confidence samples, use a more nuanced approach
+        if sample.confidence < self.config.confidence_threshold:
+            # If confidence is very low (< 0.3), treat as unknown/closed
+            if sample.confidence < 0.3:
+                return True
+            # For moderate confidence (0.3-0.65), use a relaxed threshold
+            relaxed_thresh = ear_thresh * 0.8  # 20% more lenient
+            return sample.ear < relaxed_thresh
+        
+        # High confidence sample - use standard threshold
+        return sample.ear < ear_thresh
 
     def _integrate_boolean(
         self,
