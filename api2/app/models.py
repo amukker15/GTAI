@@ -196,3 +196,66 @@ class VitalsSimResponse(BaseModel):
     hrv_rmssd_ms: float
     ranges_used: dict[str, SimRange]
     seed: int | None = None
+
+
+class RouteAnalyticsRequest(BaseModel):
+    start: datetime | None = Field(
+        default=None, description="ISO timestamp for the earliest window to include"
+    )
+    end: datetime | None = Field(
+        default=None, description="ISO timestamp for the latest window to include"
+    )
+    route_ids: list[str] | None = Field(
+        default=None,
+        description="Subset of route IDs to include. Empty or omitted means all routes.",
+    )
+    include_narrative: bool = Field(
+        default=True,
+        description="When true, Snowflake Cortex is asked to summarize each route.",
+    )
+    limit: int | None = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of routes to return, ordered by avg risk.",
+    )
+    lookback_days: int | None = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description="Fallback range when start/end are omitted.",
+    )
+    min_windows: int | None = Field(
+        default=20,
+        ge=1,
+        description="Minimum windows per route required to appear in the response.",
+    )
+
+
+class RouteAnalyticsRow(BaseModel):
+    route_id: str
+    window_count: int
+    avg_risk: float
+    drowsy_rate: float
+    asleep_rate: float
+    avg_perclos: float
+    avg_yawn_duty: float
+    avg_droop_duty: float
+    avg_yawn_count: float | None = None
+    avg_pitch_max: float | None = None
+    avg_pitch_avg: float | None = None
+    peak_risk: float | None = None
+    riskiest_ts: datetime | None = None
+    riskiest_risk: float | None = None
+    route_length_km: float | None = None
+    visibility_avg_km: float | None = None
+    elevation_change_m: float | None = None
+    intersection_count: float | None = None
+    nighttime_proportion: float | None = None
+    rest_stops_per_100km: float | None = None
+    cortex_summary: str | None = None
+
+
+class RouteAnalyticsResponse(BaseModel):
+    generated_at: datetime
+    routes: list[RouteAnalyticsRow]
