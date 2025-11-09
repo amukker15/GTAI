@@ -40,6 +40,37 @@ class AnalyzerConfig:
 
 @dataclass(frozen=True)
 class StateThresholds:
+    # PERCLOS thresholds (PERCLOS-first approach)
+    perclos_asleep_primary: float = 0.50  # A1: Primary asleep threshold
+    perclos_asleep_confirm: float = 0.40  # A2: Confirmatory asleep threshold
+    perclos_asleep_broad: float = 0.35    # A3: Broad confirmatory asleep threshold
+    perclos_drowsy_primary: float = 0.25  # D1: Primary drowsy threshold
+    perclos_drowsy_assist: float = 0.15   # D2: Assisted drowsy threshold
+    perclos_lucid_near: float = 0.12      # Near threshold for lucid warning
+    
+    # Supporting signal thresholds for confirmation
+    yawn_duty_asleep: float = 0.25        # Confirmatory for asleep
+    yawn_duty_drowsy: float = 0.15        # Confirmatory for drowsy
+    yawn_count_threshold: int = 2         # Yawn count threshold
+    
+    droop_duty_asleep: float = 0.20       # Confirmatory for asleep/drowsy
+    
+    pitchdown_asleep: float = 25.0        # Confirmatory for asleep
+    pitchdown_drowsy: float = 20.0        # Confirmatory for drowsy
+    
+    # Risk scoring normalization ranges
+    perclos_risk_min: float = 0.08        # Lower bound for risk scoring
+    perclos_risk_max: float = 0.50        # Upper bound for risk scoring
+    yawn_risk_min: float = 0.10           # Lower bound for yawn risk
+    yawn_risk_max: float = 0.25           # Upper bound for yawn risk
+    droop_risk_min: float = 0.10          # Lower bound for droop risk
+    droop_risk_max: float = 0.40          # Upper bound for droop risk
+    
+    # System thresholds
+    fps_min_ok: float = 10.0
+    hysteresis_seconds: int = 300
+    
+    # Legacy compatibility (deprecated - use new thresholds above)
     perclos_high_30s: float = 0.25
     perclos_concerning_30s: float = 0.15
     perclos_elevated_30s: float = 0.08
@@ -47,15 +78,11 @@ class StateThresholds:
     perclos_asleep_combo: float = 0.34
     yawn_duty_concerning: float = 0.15
     yawn_duty_high: float = 0.25
-    yawn_duty_asleep: float = 0.30
     yawn_duty_elevated: float = 0.10
     droop_duty_concerning: float = 0.20
     droop_duty_high: float = 0.40
-    droop_duty_asleep: float = 0.30
     pitchdown_flag: float = 40.0
     pitchdown_drowsy_flag: float = 40.0
-    fps_min_ok: float = 10.0
-    hysteresis_seconds: int = 300
 
 
 @dataclass(frozen=True)
