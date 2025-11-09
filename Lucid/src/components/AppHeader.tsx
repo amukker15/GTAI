@@ -257,9 +257,16 @@ export default function AppHeader() {
             </nav>
           </div>
 
-          {/* Dark Mode Toggle - Right */}
-          <div className="flex items-center">
+          {/* Dark Mode Toggle + Phone button - Right */}
+          <div className="flex items-center gap-3">
             <DarkModeToggle />
+            <button
+              title="Open Phone"
+              onClick={() => navigate('/phone')}
+              className="text-sm font-medium px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
+            >
+              Phone
+            </button>
           </div>
         </div>
       </div>
