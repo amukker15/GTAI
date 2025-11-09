@@ -514,6 +514,37 @@ async def aggregate_endpoint(
     )
 
 
+@app.post("/api/status")
+async def save_driver_status(
+    status: str = Form(..., description="Driver status: OK, DROWSY_SOON, or ASLEEP"),
+    driver_id: str | None = Form(None),
+    session_id: str | None = Form(None)
+):
+    """Save driver status to Snowflake STATUS_TABLE"""
+    try:
+        # Validate status values
+        valid_statuses = ["OK", "DROWSY_SOON", "ASLEEP"]
+        if status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Status must be one of: {valid_statuses}")
+        
+        # Insert into STATUS_TABLE
+        try:
+            rows_affected = snowflake_db.insert_status(status)
+            timestamp = datetime.now().isoformat()
+            print(f"[Snowflake] Saved status {status} at {timestamp}")
+            return {"success": True, "status": status, "timestamp": timestamp, "rows_affected": rows_affected}
+        except Exception as snowflake_error:
+            # Handle Snowflake connection issues gracefully
+            timestamp = datetime.now().isoformat()
+            print(f"[Snowflake] Connection failed, running in demo mode. Status: {status} at {timestamp}")
+            return {"success": True, "status": status, "timestamp": timestamp, "demo_mode": True, "note": "Snowflake not connected - demo mode"}
+        
+    except Exception as e:
+        print(f"[Snowflake] Error saving status: {e}")
+        # Don't fail the request if Snowflake is down
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/v1/state", response_model=StateResponse)
 async def classify_state(payload: StateRequest):
     response = state_classifier.classify(payload)
