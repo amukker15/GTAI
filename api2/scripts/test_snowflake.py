@@ -1,32 +1,50 @@
-"""Simple script to validate a live Snowflake connection and query the two tables.
+"""Live Snowflake + API tester
 
-Run this locally after setting the environment variables. It prints current user
-and counts from `DRIVERS` and `DROWSINESS_MEASUREMENTS` under the configured
-database/schema. This script intentionally does not contain any credentials.
+This script connects to Snowflake (using env vars or .env), then finds all video
+files in `api2/videos/` and, for each file, posts three analysis requests to
+`/api/window` at timestamps 30, 60 and 90 seconds. For each successful analysis
+response the script inserts a row into
+`DROWSINESS_MEASUREMENTS` with columns:
+  - driver_id (file stem)
+  - measured_at (current UTC timestamp)
+  - perclos_30s, pitchdown_avg_30s, pitchdown_max_30s,
+    droop_time_30s, droop_duty_30s,
+    yawn_count_30s, yawn_time_30s, yawn_duty_30s, yawn_peak_30s
 
-Example (PowerShell):
+Usage (PowerShell):
   $env:SNOWFLAKE_USER = "FAWAZSABIR"
-  $env:SNOWFLAKE_PASSWORD = "H4ackathon25!!!"
+  $env:SNOWFLAKE_PASSWORD = "..."
   $env:SNOWFLAKE_ACCOUNT = "NV61963"
   $env:SNOWFLAKE_WAREHOUSE = "COMPUTE_WH"
-  $env:SNOWFLAKE_DATABASE = "LCD_ENDPOINTS"
-  $env:SNOWFLAKE_SCHEMA = "PUBLIC"
-  python scripts/test_snowflake.py
+  python .\scripts\test_snowflake.py
+
+You can override the upload target with API_BASE_URL (default http://localhost:8000).
 """
 
 from __future__ import annotations
 
 import os
 import sys
+<<<<<<< Updated upstream
 from datetime import datetime, timezone
+=======
+import json
+import traceback
+from pathlib import Path
+from datetime import datetime
+>>>>>>> Stashed changes
 from typing import Any
 
 try:
     import dotenv
     dotenv.load_dotenv()
 except Exception:
-    # python-dotenv is optional; environment variables can be set directly.
     pass
+
+try:
+    import requests
+except Exception:
+    requests = None  # we'll detect and exit politely later
 
 import snowflake.connector
 
@@ -93,13 +111,8 @@ def insert_measurement_row(
 def main() -> None:
     user = require_env("SNOWFLAKE_USER")
     password = require_env("SNOWFLAKE_PASSWORD")
-    # Account locator may be incomplete in some setups; allow specifying
-    # a full host via SNOWFLAKE_HOST (e.g. nv61963.us-east-1.snowflakecomputing.com)
     account = os.getenv("SNOWFLAKE_ACCOUNT")
     host = os.getenv("SNOWFLAKE_HOST")
-    if not account and not host:
-        print("ERROR: either SNOWFLAKE_ACCOUNT or SNOWFLAKE_HOST must be set", file=sys.stderr)
-        sys.exit(2)
     warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
     database = os.getenv("SNOWFLAKE_DATABASE", "LCD_ENDPOINTS")
     schema = os.getenv("SNOWFLAKE_SCHEMA", "PUBLIC")
@@ -110,41 +123,111 @@ def main() -> None:
         database=database,
         schema=schema,
     )
-    # Prefer host override when provided (useful when account locator needs
-    # region/org qualifiers). The connector accepts a 'host' argument. Some
-    # connector versions still require an 'account' param — derive it from the
-    # host when missing.
+
     if host:
         conn_kwargs["host"] = host
-        # Snowflake connector often still requires an 'account' param even when
-        # a host is supplied. Prefer an explicit SNOWFLAKE_ACCOUNT if provided,
-        # otherwise derive it from the host's left-most label.
         if account:
             conn_kwargs["account"] = account
         else:
-            derived = host.split(".")[0]
-            conn_kwargs["account"] = derived
+            conn_kwargs["account"] = host.split(".")[0]
     else:
+        if not account:
+            print("ERROR: either SNOWFLAKE_ACCOUNT or SNOWFLAKE_HOST must be set", file=sys.stderr)
+            sys.exit(2)
         conn_kwargs["account"] = account
+
     if warehouse:
         conn_kwargs["warehouse"] = warehouse
 
+    return conn_kwargs
+
+
+def ensure_warehouse(cursor, warehouse: str | None) -> str | None:
+    """Try to ensure there's an active warehouse for the session.
+    Returns the warehouse in use or None."""
+    if not warehouse:
+        return None
+    try:
+        cursor.execute(f"USE WAREHOUSE {warehouse}")
+        print(f"Using warehouse: {warehouse}")
+        return warehouse
+    except Exception as we:
+        print(f"Could not set warehouse {warehouse}: {we}")
+        # try to discover
+    try:
+        cursor.execute("SHOW WAREHOUSES")
+        wh_rows = cursor.fetchall()
+        wh_desc = [d[0].upper() for d in cursor.description]
+        name_idx = None
+        for i, n in enumerate(wh_desc):
+            if n in ("NAME", "WAREHOUSE_NAME"):
+                name_idx = i
+                break
+        if name_idx is None:
+            name_idx = 0
+        candidates = [r[name_idx] for r in wh_rows]
+        print("Available warehouses:")
+        for c in candidates:
+            print(f"  - {c}")
+        for candidate in candidates:
+            try:
+                cursor.execute(f"USE WAREHOUSE {candidate}")
+                print(f"Using discovered warehouse: {candidate}")
+                return candidate
+            except Exception:
+                continue
+    except Exception as se:
+        print(f"Could not list warehouses: {se}")
+    print("Continuing without an active warehouse.")
+    return None
+
+
+def find_video_files(footage_dir: Path) -> list[Path]:
+    exts = ("*.mp4", "*.mov", "*.avi", "*.mkv", "*.mpg", "*.webm")
+    files: list[Path] = []
+    if not footage_dir.exists():
+        return files
+    for ext in exts:
+        files.extend(sorted(footage_dir.glob(ext)))
+    return files
+
+
+def _float_or_none(x: Any):
+    try:
+        return None if x is None else float(x)
+    except Exception:
+        return None
+
+
+def _int_or_none(x: Any):
+    try:
+        return None if x is None else int(x)
+    except Exception:
+        return None
+
+
+def main() -> None:
+    if requests is None:
+        print("requests is not installed. Install it with: pip install requests", file=sys.stderr)
+        sys.exit(2)
+
+    conn_kwargs = build_conn_kwargs()
+    database = conn_kwargs.get("database")
+    schema = conn_kwargs.get("schema")
+    warehouse = conn_kwargs.get("warehouse")
+
     print("Connecting to Snowflake with:")
-    print(f"  user={user}")
-    print(f"  account={account}")
+    print(f"  user={conn_kwargs.get('user')}")
+    print(f"  account={conn_kwargs.get('account')}")
     print(f"  database={database}, schema={schema}")
     if warehouse:
         print(f"  warehouse={warehouse}")
 
     try:
         conn = snowflake.connector.connect(**conn_kwargs)
-    except Exception as exc:
-        # Print full exception for easier diagnosis (includes Snowflake error codes)
-        import traceback
-
-        print("Failed to connect to Snowflake:", file=sys.stderr)
+    except Exception:
+        print("Failed to connect to Snowflake:")
         traceback.print_exc()
-        # Mask password when printing connection parameters
         safe = dict(conn_kwargs)
         if "password" in safe:
             safe["password"] = "***REDACTED***"
@@ -154,53 +237,13 @@ def main() -> None:
     try:
         cur = conn.cursor()
         try:
-            # Ensure an active warehouse is selected for the session if one was
-            # provided. Some accounts require an explicit USE WAREHOUSE call.
-            if warehouse:
-                try:
-                    cur.execute(f"USE WAREHOUSE {warehouse}")
-                    print(f"Using warehouse: {warehouse}")
-                except Exception as we:
-                    print(f"Could not set warehouse {warehouse}: {we}")
-                    # Try to discover a usable warehouse by listing available
-                    # warehouses and attempting to use each one until success.
-                    try:
-                        cur.execute("SHOW WAREHOUSES")
-                        wh_rows = cur.fetchall()
-                        wh_desc = [d[0].upper() for d in cur.description]
-                        name_idx = None
-                        for i, n in enumerate(wh_desc):
-                            if n in ("NAME", "WAREHOUSE_NAME"):
-                                name_idx = i
-                                break
-                        if name_idx is None:
-                            # Fallback: assume first column is the name
-                            name_idx = 0
-                        # Build and print candidate list for visibility
-                        candidates = [r[name_idx] for r in wh_rows]
-                        print("Available warehouses:")
-                        for c in candidates:
-                            print(f"  - {c}")
-                        tried = 0
-                        for candidate in candidates:
-                            try:
-                                cur.execute(f"USE WAREHOUSE {candidate}")
-                                print(f"Using discovered warehouse: {candidate}")
-                                warehouse = candidate
-                                break
-                            except Exception:
-                                tried += 1
-                                continue
-                        if tried and warehouse is None:
-                            print("Could not find a usable warehouse from SHOW WAREHOUSES; continuing without an active warehouse.")
-                    except Exception as se:
-                        print(f"Could not list warehouses: {se}")
+            # ensure warehouse
+            ensure_warehouse(cur, warehouse)
 
             cur.execute("SELECT CURRENT_USER(), CURRENT_ACCOUNT()")
             row = cur.fetchone()
             print("Connected as:", row)
 
-            # Count rows in the two tables (fully qualified names to be explicit)
             drivers_q = f"SELECT COUNT(*) FROM {database}.{schema}.DRIVERS"
             meas_q = f"SELECT COUNT(*) FROM {database}.{schema}.DROWSINESS_MEASUREMENTS"
 
@@ -212,6 +255,7 @@ def main() -> None:
                 except Exception as e:
                     print(f"Could not query {name}: {e}")
 
+<<<<<<< Updated upstream
             # --- Batch upload: post every video to /api/window to populate Snowflake ---
             try:
                 import requests
@@ -313,6 +357,89 @@ def main() -> None:
 
                         if processed == 0:
                             print("\nNo API uploads were completed successfully.")
+=======
+            # find videos and run analysis 3 times per file (look in api2/videos)
+            script_dir = Path(__file__).parent
+            footage_dir = script_dir.parent / "videos"
+            video_files = find_video_files(footage_dir)
+
+            if not video_files:
+                print("No videos found in api2/videos; nothing to upload.")
+                return
+
+            base_url = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip('/')
+            upload_url = f"{base_url}/api/window"
+            timestamps = [30, 60, 90]
+
+            for video_file in video_files:
+                driver_id = video_file.stem
+                for ts in timestamps:
+                    print(f"\nUploading {video_file.name} to {upload_url} with timestamp={ts} (driver_id={driver_id})")
+                    try:
+                        with open(video_file, 'rb') as fh:
+                            files = {'video': (video_file.name, fh, 'application/octet-stream')}
+                            data = {'timestamp': str(ts), 'session_id': f'{driver_id}_{ts}', 'driver_id': driver_id}
+                            resp = requests.post(upload_url, files=files, data=data, timeout=180)
+                        resp.raise_for_status()
+                    except Exception as e:
+                        print(f"Upload failed for {video_file.name} ts={ts}: {e}")
+                        try:
+                            print(getattr(resp, 'text', ''))
+                        except Exception:
+                            pass
+                        continue
+
+                    try:
+                        payload = resp.json()
+                    except Exception:
+                        print("Upload succeeded but response was not JSON:")
+                        try:
+                            print(resp.text)
+                        except Exception:
+                            pass
+                        payload = None
+
+                    if not payload:
+                        continue
+
+                    # Extract requested fields and insert into Snowflake
+                    fields = [
+                        'perclos_30s',
+                        'pitchdown_avg_30s',
+                        'pitchdown_max_30s',
+                        'droop_time_30s',
+                        'droop_duty_30s',
+                        'yawn_count_30s',
+                        'yawn_time_30s',
+                        'yawn_duty_30s',
+                        'yawn_peak_30s',
+                    ]
+
+                    values = []
+                    for f in fields:
+                        v = payload.get(f)
+                        if f == 'yawn_count_30s':
+                            values.append(_int_or_none(v))
+                        else:
+                            values.append(_float_or_none(v))
+
+                    measured_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    insert_cols = ['driver_id', 'timestamp'] + fields
+                    insert_vals = [driver_id, measured_at] + values
+
+                    placeholders = ",".join(["%s"] * len(insert_cols))
+                    cols_join = ",".join(insert_cols)
+                    insert_sql = f"INSERT INTO {database}.{schema}.DROWSINESS_MEASUREMENTS ({cols_join}) VALUES ({placeholders})"
+                    try:
+                        cur.execute(insert_sql, insert_vals)
+                        print(f"Inserted measurement into DROWSINESS_MEASUREMENTS for {driver_id} ts={ts}, rowcount={cur.rowcount}")
+                        cur.execute(meas_q)
+                        newc = cur.fetchone()[0]
+                        print(f"DROWSINESS_MEASUREMENTS rows after insert: {newc}")
+                    except Exception as ie:
+                        print(f"Failed to insert measurement: {ie}")
+
+>>>>>>> Stashed changes
         finally:
             cur.close()
     finally:
