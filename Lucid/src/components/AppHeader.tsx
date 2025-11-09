@@ -21,9 +21,8 @@ export default function AppHeader() {
   const navigate = useNavigate();
   const headerRef = useRef<HTMLElement | null>(null);
   const navRefs = useRef<(HTMLElement | null)[]>([]);
-  const trucks = useStore((s) => s.trucks);
   const resetGlobalTimer = useStore((s) => s.resetGlobalTimer);
-  const firstTruckId = trucks[0]?.id ?? null;
+  const secondsSinceLastApiCall = useStore((s) => s.secondsSinceLastApiCall);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
 
   const pathname = location.pathname;
@@ -50,15 +49,15 @@ export default function AppHeader() {
       },
       {
         key: "analytics",
-        label: "Analytics",
-        description: "Trend analytics",
-        to: firstTruckId ? `/long-term/${firstTruckId}` : "/",
+        label: "Route Analysis",
+        description: "LLM-guided planning",
+        to: "/routes",
         icon: <LineChart className="w-5 h-5" />,
-        match: (path) => path.startsWith("/long-term"),
-        disabled: !firstTruckId,
+        match: (path) => path.startsWith("/routes") || path.startsWith("/long-term"),
+        disabled: false,
       },
     ],
-    [firstTruckId]
+    []
   );
 
   const activeIndex = navItems.findIndex((item) => item.match(pathname));

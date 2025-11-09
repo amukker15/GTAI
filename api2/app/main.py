@@ -30,6 +30,8 @@ from .models import (
     VitalsSimResponse,
     WindowAggregateResponse,
     YawnResponse,
+    RouteAnalyticsRequest,
+    RouteAnalyticsResponse,
 )
 from .utils import parse_timestamp
 from .state_classifier import DriverStateClassifier
@@ -37,6 +39,7 @@ from .state_store import GLOBAL_STATE_STORE
 from .sim_vitals import VitalsSimulator
 from .video import VideoWindowExtractor
 from . import snowflake_db
+from .route_analytics import run_route_analytics
 
 app = FastAPI(
     title="Lucid Drowsiness API",
@@ -697,6 +700,16 @@ async def get_measurements(
     except Exception as e:
         print(f"[Snowflake] Failed to fetch measurements: {e}")
         return {"measurements": []}
+
+
+@app.post("/analytics/routes", response_model=RouteAnalyticsResponse)
+async def route_analytics_endpoint(payload: RouteAnalyticsRequest):
+    """Summarize risk per route by querying Snowflake + Cortex."""
+    try:
+        result: RouteAnalyticsResponse = await run_in_threadpool(run_route_analytics, payload)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Route analytics unavailable: {exc}") from exc
+    return result
 
 
 """FastAPI entrypoint wiring request handlers to analyzers and simulators."""

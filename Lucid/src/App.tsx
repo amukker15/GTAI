@@ -49,6 +49,7 @@ export default function App() {
           <Route path="/" element={<MainScreen />} />
           <Route path="/driver-studio" element={<DriverSelection />} />
           <Route path="/truck/:truckId" element={<TruckDetail />} />
+          <Route path="/routes" element={<LongTerm />} />
           <Route path="/long-term/:truckId" element={<LongTerm />} />
           <Route path="/phone" element={<Phone />} />
         </Routes>
