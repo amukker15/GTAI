@@ -1,9 +1,13 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 export default function Phone() {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [flashVisible, setFlashVisible] = useState(false);
 
   // Update clock every second
   useEffect(() => {
@@ -33,28 +37,141 @@ export default function Phone() {
     return `${dayName}, ${monthName} ${day}, ${year}`;
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center text-center bg-white dark:bg-slate-900">
-      {/* Clock Screen */}
-      <div className="flex flex-col items-center gap-8">
-        {/* Digital Clock */}
-        <div className="font-mono text-9xl font-bold tracking-wider text-slate-900 dark:text-white">
-          {formatTime(currentTime)}
-        </div>
-        
-        {/* Date */}
-        <div className="text-2xl font-medium text-slate-600 dark:text-slate-400">
-          {formatDate(currentTime)}
-        </div>
+  async function runQuery() {
+    // avoid overlapping requests
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    setError(null);
+    setRows(null);
+    try {
+      const resp = await fetch('/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: 'SELECT * FROM STATUS_TABLE ORDER BY TIME_CREATED DESC LIMIT 1;' }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        setError(json.error || JSON.stringify(json));
+      } else {
+        const resultRows = json.result || [];
+        setRows(resultRows);
 
-        {/* Back Button */}
-        <div className="mt-8">
-          <button
-            onClick={() => navigate('/')}
-            className="rounded-md bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
-          >
-            Back to dashboard
-          </button>
+        // Trigger flash only when any returned row contains the literal 'DROWSY_SOON'
+        const triggerMatch = (resultRows || []).some((row: Record<string, any>) =>
+          Object.values(row).some((v) => String(v) === 'DROWSY_SOON')
+        );
+        if (triggerMatch) {
+          triggerFlash();
+        }
+      }
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  }
+
+  // keep a ref that mirrors loading to avoid stale closures in the interval
+  const loadingRef = useRef<boolean>(false);
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  // flash control refs
+  const isFlashingRef = useRef(false);
+  const flashIntervalRef = useRef<number | null>(null);
+  const flashTimeoutRef = useRef<number | null>(null);
+
+  function clearFlashTimers() {
+    if (flashIntervalRef.current) {
+      clearInterval(flashIntervalRef.current as unknown as number);
+      flashIntervalRef.current = null;
+    }
+    if (flashTimeoutRef.current) {
+      clearTimeout(flashTimeoutRef.current as unknown as number);
+      flashTimeoutRef.current = null;
+    }
+    isFlashingRef.current = false;
+    setFlashVisible(false);
+  }
+
+  function triggerFlash() {
+    if (isFlashingRef.current) return;
+    isFlashingRef.current = true;
+    setFlashVisible(true);
+    // toggle visibility every 500ms to create a flashing effect
+    flashIntervalRef.current = window.setInterval(() => {
+      setFlashVisible((v) => !v);
+    }, 500);
+    // stop after 10 seconds
+    flashTimeoutRef.current = window.setTimeout(() => {
+      clearFlashTimers();
+    }, 10000);
+  }
+
+  // run query immediately and then every second
+  useEffect(() => {
+    // initial run
+    runQuery();
+    const id = setInterval(() => {
+      runQuery();
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // cleanup flash timers on unmount
+  useEffect(() => {
+    return () => {
+      clearFlashTimers();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center text-center bg-white dark:bg-slate-900 p-6">
+      {/* flashing overlay */}
+      {flashVisible && (
+        <div className="fixed inset-0 z-50 pointer-events-none" style={{ backgroundColor: 'rgba(255,0,0,0.6)', mixBlendMode: 'screen' }} />
+      )}
+      <div className="w-full max-w-3xl">
+        <div className="flex flex-col items-center gap-6">
+          <div className="font-mono text-6xl font-bold tracking-wider text-slate-900 dark:text-white">
+            {formatTime(currentTime)}
+          </div>
+
+          <div className="text-lg font-medium text-slate-600 dark:text-slate-400">
+            {formatDate(currentTime)}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/')}
+              className="rounded-md bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
+            >
+              Back to dashboard
+            </button>
+            <button
+              onClick={() => triggerFlash()}
+              className="rounded-md bg-red-600 text-white px-4 py-2 text-sm font-semibold hover:bg-red-700 transition-colors"
+            >
+              Flash Now
+            </button>
+          </div>
+
+          <div className="w-full mt-6 text-left">
+            {error && (
+              <div className="text-red-600 bg-red-100 p-3 rounded">Error: {error}</div>
+            )}
+
+            {rows && (
+              <pre className="bg-slate-50 dark:bg-slate-800 p-3 rounded text-sm overflow-auto">
+                {JSON.stringify(rows, null, 2)}
+              </pre>
+            )}
+          </div>
         </div>
       </div>
     </div>

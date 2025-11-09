@@ -668,4 +668,31 @@ async def get_measurements(
         return {"measurements": []}
 
 
+@app.post("/api/query")
+async def query_endpoint(payload: dict):
+    """Run an arbitrary SQL query against Snowflake.
+
+    Body JSON should be { "sql": "SELECT ...", "params": [..] }
+    For SELECT queries a list of rows (dict) is returned. For other queries
+    the response contains rows_affected.
+    """
+    sql = payload.get("sql") if isinstance(payload, dict) else None
+    params = payload.get("params") if isinstance(payload, dict) else None
+    if not sql:
+        raise HTTPException(status_code=400, detail="Request must include 'sql' in the JSON body")
+
+    try:
+        # Simple heuristic: use fetchall for SELECT-like queries
+        if str(sql).strip().lower().startswith("select"):
+            rows = snowflake_db.fetchall(sql, params)
+            return {"success": True, "result": rows}
+        else:
+            rows_affected = snowflake_db.execute(sql, params)
+            return {"success": True, "rows_affected": rows_affected}
+    except Exception as e:
+        print(f"[Snowflake] Query failed: {e}")
+        # Return a 500 to the client but avoid leaking sensitive details
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 """FastAPI entrypoint wiring request handlers to analyzers and simulators."""
