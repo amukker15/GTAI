@@ -124,7 +124,10 @@ export default function DriverSelection() {
           
           <div className="mt-6 flex justify-center gap-8 text-sm">
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+              <span className="relative inline-flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
               <span className="font-medium text-gray-900 dark:text-white">{filteredTrucks.length}</span>
               <span className="text-gray-600 dark:text-gray-300">drivers</span>
             </div>
