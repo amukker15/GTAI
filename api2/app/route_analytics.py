@@ -10,6 +10,8 @@ from .models import (
     RouteAnalyticsRequest,
     RouteAnalyticsResponse,
     RouteAnalyticsRow,
+    RouteExplanationRequest,
+    RouteExplanationResponse,
 )
 
 CORTEX_MODEL = os.getenv("SNOWFLAKE_CORTEX_MODEL", "mistral-7b")
@@ -108,6 +110,7 @@ def run_route_analytics(payload: RouteAnalyticsRequest) -> RouteAnalyticsRespons
             "route_id": route_id,
             "window_count": int(normalized.get("WINDOW_COUNT", 0) or 0),
             "avg_risk": _to_float(normalized.get("AVG_RISK")) or 0.0,
+            "route_risk_score": _compute_route_risk(normalized),
             "drowsy_rate": _to_float(normalized.get("DROWSY_RATE")) or 0.0,
             "asleep_rate": _to_float(normalized.get("ASLEEP_RATE")) or 0.0,
             "avg_perclos": _to_float(normalized.get("AVG_PERCLOS")) or 0.0,
@@ -132,6 +135,60 @@ def run_route_analytics(payload: RouteAnalyticsRequest) -> RouteAnalyticsRespons
     return RouteAnalyticsResponse(
         generated_at=datetime.now(timezone.utc),
         routes=enriched_rows,
+    )
+
+
+def run_route_explanation(payload: RouteExplanationRequest) -> RouteExplanationResponse:
+    analytics_payload = RouteAnalyticsRequest(
+        start=payload.start,
+        end=payload.end,
+        route_ids=[payload.route_id],
+        include_narrative=False,
+        limit=1,
+        lookback_days=payload.lookback_days,
+        min_windows=1,
+    )
+    rows = _query_route_rows(analytics_payload)
+    if not rows:
+        raise ValueError(f"No telemetry windows found for route {payload.route_id}")
+
+    normalized = {(k.upper() if isinstance(k, str) else k): v for k, v in rows[0].items()}
+    route_id = normalized.get("ROUTE_ID") or payload.route_id
+    avg_risk = _to_float(normalized.get("AVG_RISK")) or 0.0
+    drowsy_rate = _to_float(normalized.get("DROWSY_RATE")) or 0.0
+    asleep_rate = _to_float(normalized.get("ASLEEP_RATE")) or 0.0
+    nighttime = _to_float(normalized.get("NIGHTTIME_PROPORTION"))
+    rest_stops = _to_float(normalized.get("REST_STOPS_PER_100KM"))
+    route_risk = _compute_route_risk(normalized)
+
+    prompt = _build_route_bot_prompt(
+        route_id=route_id,
+        avg_risk=avg_risk,
+        drowsy_rate=drowsy_rate,
+        asleep_rate=asleep_rate,
+        nighttime=nighttime,
+        rest_stops=rest_stops,
+        perclos=_to_float(normalized.get("AVG_PERCLOS")) or 0.0,
+        yaw=_to_float(normalized.get("AVG_YAWN_DUTY")) or 0.0,
+        droop=_to_float(normalized.get("AVG_DROOP_DUTY")) or 0.0,
+        risk_score=route_risk,
+    )
+
+    try:
+        explanation = _invoke_cortex(prompt)
+    except RuntimeError as exc:
+        explanation = str(exc)
+
+    return RouteExplanationResponse(
+        route_id=route_id,
+        route_risk_score=route_risk,
+        avg_risk=avg_risk,
+        drowsy_rate=drowsy_rate,
+        asleep_rate=asleep_rate,
+        nighttime_proportion=nighttime,
+        rest_stops_per_100km=rest_stops,
+        explanation=explanation,
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -199,19 +256,9 @@ def _generate_cortex_recommendations(rows: list[dict[str, Any]]) -> dict[str, st
             continue
         prompt = _build_prompt(row)
         try:
-            result = snowflake_db.fetchall(
-                "SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s) AS summary",
-                (CORTEX_MODEL, prompt),
-            )
-        except Exception as exc:
-            summaries[route_id] = f"Cortex unavailable: {exc}"
-            continue
-        if result:
-            summary_value = result[0].get("SUMMARY") or result[0].get("summary")
-            if isinstance(summary_value, (str, bytes)):
-                summaries[route_id] = summary_value if isinstance(summary_value, str) else summary_value.decode("utf-8", "ignore")
-            else:
-                summaries[route_id] = str(summary_value)
+            summaries[route_id] = _invoke_cortex(prompt)
+        except RuntimeError as exc:
+            summaries[route_id] = str(exc)
     return summaries
 
 
@@ -236,6 +283,33 @@ def _build_prompt(row: dict[str, Any]) -> str:
     )
 
 
+def _build_route_bot_prompt(
+    *,
+    route_id: str,
+    avg_risk: float,
+    drowsy_rate: float,
+    asleep_rate: float,
+    nighttime: float | None,
+    rest_stops: float | None,
+    perclos: float,
+    yaw: float,
+    droop: float,
+    risk_score: float,
+) -> str:
+    night_pct = (nighttime or 0.0) * 100
+    rest_text = "unknown" if rest_stops is None else f"{rest_stops:.1f} per 100km"
+    return (
+        "You are Lucid's Cortex copilots for operations leaders. "
+        f"Explain whether route {route_id} is dangerous. "
+        f"Composite risk score {risk_score:.1f}/100. Avg risk window {avg_risk:.1f}, "
+        f"drowsy windows {(drowsy_rate * 100):.1f}%, asleep windows {(asleep_rate * 100):.1f}%. "
+        f"PERCLOS {(perclos * 100):.1f}%, yaw duty {(yaw * 100):.1f}%, droop {(droop * 100):.1f}%. "
+        f"Night driving {night_pct:.1f}% and rest stops {rest_text}. "
+        "Cite the biggest biometric trigger, environmental headwinds, and an action the business should take. "
+        "Use two short paragraphs: the first explains risk, the second gives an operational recommendation."
+    )
+
+
 def _to_float(value: Any) -> float | None:
     if value is None:
         return None
@@ -247,3 +321,37 @@ def _to_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _compute_route_risk(row: dict[str, Any]) -> float:
+    avg_risk = _to_float(row.get("AVG_RISK")) or 0.0
+    drowsy_pct = (_to_float(row.get("DROWSY_RATE")) or 0.0) * 100.0
+    asleep_pct = (_to_float(row.get("ASLEEP_RATE")) or 0.0) * 100.0
+    night_pct = (_to_float(row.get("NIGHTTIME_PROPORTION")) or 0.0) * 100.0
+    rest_density = _to_float(row.get("REST_STOPS_PER_100KM")) or 0.0
+    intersections = _to_float(row.get("INTERSECTION_COUNT")) or 0.0
+
+    fatigue_component = avg_risk * 0.5 + drowsy_pct * 0.2 + asleep_pct * 0.3
+    exposure_component = min(20.0, night_pct * 0.15 + (intersections * 0.1))
+    recovery_component = max(-12.0, min(8.0, (4.0 - rest_density) * 2.5))
+    score = fatigue_component + exposure_component + recovery_component
+    return max(0.0, min(100.0, round(score, 1)))
+
+
+def _invoke_cortex(prompt: str) -> str:
+    """Call Snowflake Cortex COMPLETE per Context7 Snowflake AI Toolkit docs."""
+    try:
+        result = snowflake_db.fetchall(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s) AS summary",
+            (CORTEX_MODEL, prompt),
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Cortex unavailable: {exc}") from exc
+    if not result:
+        raise RuntimeError("Cortex returned no content")
+    summary_value = result[0].get("SUMMARY") or result[0].get("summary")
+    if isinstance(summary_value, bytes):
+        return summary_value.decode("utf-8", "ignore")
+    if isinstance(summary_value, str):
+        return summary_value
+    return str(summary_value)

@@ -7,7 +7,7 @@ import os
 import tempfile
 from collections import OrderedDict
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock, Thread
 
@@ -32,6 +32,8 @@ from .models import (
     YawnResponse,
     RouteAnalyticsRequest,
     RouteAnalyticsResponse,
+    RouteExplanationRequest,
+    RouteExplanationResponse,
 )
 from .utils import parse_timestamp
 from .state_classifier import DriverStateClassifier
@@ -39,7 +41,7 @@ from .state_store import GLOBAL_STATE_STORE
 from .sim_vitals import VitalsSimulator
 from .video import VideoWindowExtractor
 from . import snowflake_db
-from .route_analytics import run_route_analytics
+from .route_analytics import run_route_analytics, run_route_explanation
 
 app = FastAPI(
     title="Lucid Drowsiness API",
@@ -736,6 +738,31 @@ async def route_analytics_endpoint(payload: RouteAnalyticsRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Route analytics unavailable: {exc}") from exc
     return result
+
+
+@app.post("/analytics/routes/explain", response_model=RouteExplanationResponse)
+async def route_explanation_endpoint(payload: RouteExplanationRequest):
+    """Return a Cortex-authored explanation for the requested route."""
+    try:
+        result: RouteExplanationResponse = await run_in_threadpool(run_route_explanation, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Route explanation unavailable: {exc}") from exc
+    return result
+
+
+@app.get("/analytics/routes/heartbeat")
+async def route_analytics_heartbeat():
+    """Lightweight SELECT 1 to keep a constant Snowflake connection warm."""
+    def _ping() -> None:
+        snowflake_db.fetchall("SELECT 1")
+
+    try:
+        await run_in_threadpool(_ping)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Snowflake heartbeat failed: {exc}") from exc
+    return {"status": "ok", "ts": datetime.now(timezone.utc)}
 
 
 """FastAPI entrypoint wiring request handlers to analyzers and simulators."""

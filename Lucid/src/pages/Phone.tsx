@@ -126,6 +126,14 @@ export default function Phone() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const latestStatus = rows?.[0];
+  const latestStatusLabel = latestStatus
+    ? String(latestStatus.STATUS ?? latestStatus.status ?? "—")
+    : "Waiting…";
+  const latestTimestamp = latestStatus
+    ? String(latestStatus.TIME_CREATED ?? latestStatus.time_created ?? "")
+    : "";
+
   return (
     <div className="min-h-screen flex items-center justify-center text-center bg-white dark:bg-slate-900 p-6">
       {/* yellow alert overlay with fade-in */}
@@ -156,6 +164,20 @@ export default function Phone() {
 
           <div className="text-lg font-medium text-slate-600 dark:text-slate-400">
             {formatDate(currentTime)}
+          </div>
+          <div className="mt-10 text-left text-sm text-slate-600 dark:text-slate-300 w-full max-w-sm mx-auto">
+            <p className="uppercase text-xs tracking-[0.2em] text-slate-400 dark:text-slate-500">Snowflake status table</p>
+            <p className="text-3xl font-semibold text-slate-900 dark:text-white mt-2">{latestStatusLabel}</p>
+            {latestTimestamp && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Updated {new Date(latestTimestamp).toLocaleTimeString()}
+              </p>
+            )}
+            {error && (
+              <p className="text-xs text-red-500 mt-2">
+                {error}
+              </p>
+            )}
           </div>
         </div>
       </div>

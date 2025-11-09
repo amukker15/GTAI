@@ -236,6 +236,7 @@ class RouteAnalyticsRow(BaseModel):
     route_id: str
     window_count: int
     avg_risk: float
+    route_risk_score: float
     drowsy_rate: float
     asleep_rate: float
     avg_perclos: float
@@ -259,3 +260,22 @@ class RouteAnalyticsRow(BaseModel):
 class RouteAnalyticsResponse(BaseModel):
     generated_at: datetime
     routes: list[RouteAnalyticsRow]
+
+
+class RouteExplanationRequest(BaseModel):
+    route_id: str = Field(..., min_length=1, description="Route identifier to analyze")
+    start: datetime | None = Field(default=None)
+    end: datetime | None = Field(default=None)
+    lookback_days: int | None = Field(default=30, ge=1, le=365)
+
+
+class RouteExplanationResponse(BaseModel):
+    route_id: str
+    route_risk_score: float
+    avg_risk: float
+    drowsy_rate: float
+    asleep_rate: float
+    nighttime_proportion: float | None = None
+    rest_stops_per_100km: float | None = None
+    explanation: str
+    generated_at: datetime

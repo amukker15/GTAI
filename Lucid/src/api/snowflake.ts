@@ -13,6 +13,7 @@ export type RouteAnalyticsRow = {
   routeId: string;
   windowCount: number;
   avgRisk: number;
+  routeRiskScore: number;
   drowsyRate: number;
   asleepRate: number;
   avgPerclos: number;
@@ -36,6 +37,30 @@ export type RouteAnalyticsRow = {
 export type RouteAnalyticsResponse = {
   generatedAt: string;
   routes: RouteAnalyticsRow[];
+};
+
+export type RouteExplanationRequest = {
+  routeId: string;
+  start?: string;
+  end?: string;
+  lookbackDays?: number;
+};
+
+export type RouteExplanationResponse = {
+  routeId: string;
+  routeRiskScore: number;
+  avgRisk: number;
+  drowsyRate: number;
+  asleepRate: number;
+  nighttimeProportion?: number;
+  restStopsPer100km?: number;
+  explanation: string;
+  generatedAt: string;
+};
+
+export type SnowflakeHeartbeat = {
+  status: string;
+  ts: string;
 };
 
 const EMPTY_ROUTE_RESPONSE: RouteAnalyticsResponse = {
@@ -73,6 +98,7 @@ function normalizeRouteRow(row: any): RouteAnalyticsRow {
     routeId: row.route_id ?? row.routeId ?? "UNKNOWN",
     windowCount: Number(row.window_count ?? row.windowCount ?? 0),
     avgRisk: Number(row.avg_risk ?? row.avgRisk ?? 0),
+    routeRiskScore: Number(row.route_risk_score ?? row.routeRiskScore ?? row.composite_risk ?? 0),
     drowsyRate: Number(row.drowsy_rate ?? row.drowsyRate ?? 0),
     asleepRate: Number(row.asleep_rate ?? row.asleepRate ?? 0),
     avgPerclos: Number(row.avg_perclos ?? row.avgPerclos ?? 0),
@@ -92,6 +118,40 @@ function normalizeRouteRow(row: any): RouteAnalyticsRow {
     restStopsPer100km: toOptionalNumber(row.rest_stops_per_100km ?? row.restStopsPer100km),
     cortexSummary: row.cortex_summary ?? row.cortexSummary ?? null,
   };
+}
+
+export async function fetchRouteExplanation(params: RouteExplanationRequest): Promise<RouteExplanationResponse> {
+  if (!params.routeId) throw new Error("routeId is required");
+  const body: Record<string, unknown> = { route_id: params.routeId };
+  if (params.start) body.start = params.start;
+  if (params.end) body.end = params.end;
+  if (params.lookbackDays) body.lookback_days = params.lookbackDays;
+  const raw = await apiRequest<{
+    route_id: string;
+    route_risk_score: number;
+    avg_risk: number;
+    drowsy_rate: number;
+    asleep_rate: number;
+    nighttime_proportion?: number;
+    rest_stops_per_100km?: number;
+    explanation: string;
+    generated_at: string;
+  }>("/analytics/routes/explain", { method: "POST", body });
+  return {
+    routeId: raw.route_id,
+    routeRiskScore: raw.route_risk_score,
+    avgRisk: raw.avg_risk,
+    drowsyRate: raw.drowsy_rate,
+    asleepRate: raw.asleep_rate,
+    nighttimeProportion: raw.nighttime_proportion,
+    restStopsPer100km: raw.rest_stops_per_100km,
+    explanation: raw.explanation,
+    generatedAt: raw.generated_at,
+  };
+}
+
+export async function pingSnowflake(): Promise<SnowflakeHeartbeat> {
+  return apiRequest<SnowflakeHeartbeat>("/analytics/routes/heartbeat", { method: "GET" });
 }
 
 function toOptionalNumber(value: unknown): number | undefined {
