@@ -658,18 +658,17 @@ async def get_video_info():
 
 @app.post("/api/session/reset")
 async def reset_session(session_id: str | None = Form(None)):
-    """Reset session by clearing Snowflake data for demo purposes"""
+    """Reset session by clearing all Snowflake data for demo purposes"""
     try:
-        # Clear drowsiness measurements for this session
-        if session_id:
-            query = "DELETE FROM DROWSINESS_MEASUREMENTS WHERE session_id = %s"
-            rows_affected = snowflake_db.execute(query, (session_id,))
-        else:
-            # Clear all demo data if no session specified
-            query = "DELETE FROM DROWSINESS_MEASUREMENTS WHERE driver_id = %s OR session_id = %s"
-            rows_affected = snowflake_db.execute(query, ("demo_driver", "demo_session"))
+        # Clear all demo data (STATUS_TABLE and DROWSINESS_MEASUREMENTS)
+        clear_results = snowflake_db.clear_demo_data()
         
-        return {"success": True, "rows_cleared": rows_affected}
+        return {
+            "success": True,
+            "status_rows_cleared": clear_results.get("status_cleared", 0),
+            "drowsiness_rows_cleared": clear_results.get("drowsiness_cleared", 0),
+            "message": "All demo data cleared from Snowflake tables"
+        }
     except Exception as e:
         # Reduce noise for expected Snowflake connection issues in demo mode
         if "404 Not Found" not in str(e) and "login-request" not in str(e):

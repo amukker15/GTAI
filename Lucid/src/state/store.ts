@@ -233,6 +233,29 @@ export const useStore = create<Store>((set, get) => ({
     
     console.log(`[Timer] Video duration: ${videoLimit}s, stop threshold: ${stopThreshold}s`);
     
+    // Clear Snowflake data at the start of each new demo session
+    const clearData = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/api/session/reset", {
+          method: "POST",
+          mode: "cors",
+          body: new FormData(),
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log(`[Timer] 🧹 Starting fresh demo - cleared ${result.status_rows_cleared || 0} status records and ${result.drowsiness_rows_cleared || 0} drowsiness records from Snowflake`);
+        } else {
+          console.warn("[Timer] Failed to clear demo data, but proceeding with demo");
+        }
+      } catch (error) {
+        console.warn("[Timer] Failed to clear demo data:", error);
+      }
+    };
+    
+    // Clear data before starting
+    clearData();
+    
     // Pre-schedule all API calls for deterministic execution
     const scheduledCalls: ScheduledCall[] = [];
     for (let timestamp = SAMPLE_INTERVAL_SECONDS; timestamp <= stopThreshold; timestamp += SAMPLE_INTERVAL_SECONDS) {
@@ -328,7 +351,10 @@ export const useStore = create<Store>((set, get) => ({
         body: formData,
       });
       
-      if (!response.ok) {
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`[Reset] 🧹 Cleared ${result.status_rows_cleared || 0} status records and ${result.drowsiness_rows_cleared || 0} drowsiness records from Snowflake`);
+      } else {
         console.warn("Failed to reset Snowflake session");
       }
     } catch (error) {

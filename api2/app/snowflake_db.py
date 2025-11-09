@@ -153,3 +153,34 @@ def insert_status(status: str) -> int:
     
     query = "INSERT INTO STATUS_TABLE (STATUS, TIME_CREATED) VALUES (%s, CURRENT_TIMESTAMP())"
     return execute(query, (status,))
+
+
+def clear_status_table() -> int:
+    """Clear all records from STATUS_TABLE and return affected row count."""
+    query = "DELETE FROM STATUS_TABLE"
+    return execute(query, ())
+
+
+def clear_demo_data() -> dict:
+    """Clear all demo-related data from both tables and return counts."""
+    results = {}
+    
+    try:
+        # Clear STATUS_TABLE completely
+        status_count = clear_status_table()
+        results['status_cleared'] = status_count
+        
+        # Clear DROWSINESS_MEASUREMENTS for demo sessions
+        drowsiness_count = execute(
+            "DELETE FROM DROWSINESS_MEASUREMENTS WHERE driver_id LIKE %s OR session_id LIKE %s",
+            ("demo%", "session_%")
+        )
+        results['drowsiness_cleared'] = drowsiness_count
+        
+        print(f"[Snowflake] Cleared {status_count} status records and {drowsiness_count} drowsiness records")
+        
+    except Exception as e:
+        print(f"[Snowflake] Error clearing demo data: {e}")
+        results['error'] = str(e)
+    
+    return results
