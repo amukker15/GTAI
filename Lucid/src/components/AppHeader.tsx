@@ -181,7 +181,7 @@ export default function AppHeader() {
               <img 
                 src="/media/logo.png" 
                 alt="Lucid" 
-                className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(40,40,40))_drop-shadow(-1px_0_0_rgb(51,51,51))_drop-shadow(0_1px_0_rgb(51,51,51))_drop-shadow(0_-1px_0_rgb(51,51,51))_drop-shadow(1px_1px_0_rgb(51,51,51))_drop-shadow(-1px_-1px_0_rgb(51,51,51))_drop-shadow(1px_-1px_0_rgb(51,51,51))_drop-shadow(-1px_1px_0_rgb(51,51,51))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
+                className="h-10 w-auto [filter:drop-shadow(1px_0_0_rgb(15,23,42))_drop-shadow(-1px_0_0_rgb(15,23,42))_drop-shadow(0_1px_0_rgb(15,23,42))_drop-shadow(0_-1px_0_rgb(15,23,42))_drop-shadow(1px_1px_0_rgb(15,23,42))_drop-shadow(-1px_-1px_0_rgb(15,23,42))_drop-shadow(1px_-1px_0_rgb(15,23,42))_drop-shadow(-1px_1px_0_rgb(15,23,42))] dark:[filter:drop-shadow(1px_0_0_rgba(30,41,59,0.5))_drop-shadow(-1px_0_0_rgba(30,41,59,0.5))_drop-shadow(0_1px_0_rgba(30,41,59,0.5))_drop-shadow(0_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(1px_-1px_0_rgba(30,41,59,0.5))_drop-shadow(-1px_1px_0_rgba(30,41,59,0.5))]"
               />
             </button>
             <div>
@@ -205,16 +205,16 @@ export default function AppHeader() {
             </nav>
           </div>
 
-          {/* Dark Mode Toggle + Phone button - Right */}
+          {/* Phone button + Dark Mode Toggle - Right */}
           <div className="flex items-center gap-3">
-            <DarkModeToggle />
             <button
               title="Open Phone"
               onClick={() => navigate('/phone')}
-              className="text-sm font-medium px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
+              className="text-sm font-medium px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 opacity-0 hover:opacity-100 transition-opacity duration-300"
             >
               Phone
             </button>
+            <DarkModeToggle />
           </div>
         </div>
       </div>
