@@ -199,7 +199,6 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   pollTelemetry: () => {
-<<<<<<< Updated upstream
     // No mock telemetry - return empty cleanup function
     return () => {};
   },
@@ -207,37 +206,6 @@ export const useStore = create<Store>((set, get) => ({
   pollAlerts: () => {
     // No mock alerts - return empty cleanup function
     return () => {};
-=======
-    let cancelled = false;
-    const pull = async () => {
-      const all = await getTelemetry();
-      const map: Record<string, Telemetry[]> = {};
-      all.forEach((it) => {
-        (map[it.truckId] ||= []).push(it);
-      });
-      if (!cancelled) set({ telemetryByTruckId: map });
-    };
-    pull();
-    const id = setInterval(pull, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  },
-
-  pollAlerts: () => {
-    let cancelled = false;
-    const pull = async () => {
-      const a = await getAlerts();
-      if (!cancelled) set({ alerts: a });
-    };
-    pull();
-    const id = setInterval(pull, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
->>>>>>> Stashed changes
   },
 
   loadThresholds: async () => {
