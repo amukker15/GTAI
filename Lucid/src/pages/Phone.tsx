@@ -1,14 +1,13 @@
-import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import { AlertTriangle } from "../components/icons";
 
 export default function Phone() {
-  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flashVisible, setFlashVisible] = useState(false);
+  const [dotFlashing, setDotFlashing] = useState(false);
 
   // Update clock every second
   useEffect(() => {
@@ -45,6 +44,11 @@ export default function Phone() {
     setLoading(true);
     setError(null);
     setRows(null);
+    
+    // Flash the dot red when query happens
+    setDotFlashing(true);
+    setTimeout(() => setDotFlashing(false), 200);
+    
     try {
       const resp = await fetch('/api/query', {
         method: 'POST',
@@ -138,60 +142,20 @@ export default function Phone() {
       )}
       <div className="w-full max-w-3xl">
         <div className="flex flex-col items-center gap-6">
-          <div className="font-mono text-6xl font-bold tracking-wider text-slate-900 dark:text-white">
-            {formatTime(currentTime)}
+          <div className="flex items-center gap-4">
+            <div className="font-mono text-6xl font-bold tracking-wider text-slate-900 dark:text-white">
+              {formatTime(currentTime)}
+            </div>
+            {/* Status indicator dot */}
+            <div 
+              className={`w-4 h-4 rounded-full transition-colors duration-200 ${
+                dotFlashing ? 'bg-red-500' : 'bg-slate-400 dark:bg-slate-600'
+              }`}
+            />
           </div>
 
           <div className="text-lg font-medium text-slate-600 dark:text-slate-400">
             {formatDate(currentTime)}
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/')}
-              className="rounded-md bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
-            >
-              Back to dashboard
-            </button>
-            <button
-              onClick={() => triggerFlash()}
-              className="rounded-md bg-red-600 text-white px-4 py-2 text-sm font-semibold hover:bg-red-700 transition-colors"
-            >
-              Flash Now
-            </button>
-          </div>
-
-          {/* Query Results Box - Always visible */}
-          <div className="w-full mt-6">
-            <div className="border-2 border-slate-300 dark:border-slate-600 rounded-lg p-4 bg-white dark:bg-slate-800 shadow-lg">
-              <h3 className="text-lg font-semibold mb-3 text-slate-900 dark:text-white">
-                Latest Status Query
-              </h3>
-              
-              {loading && (
-                <div className="text-slate-600 dark:text-slate-400 italic">
-                  Loading...
-                </div>
-              )}
-
-              {error && (
-                <div className="text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/20 p-3 rounded mb-3">
-                  <strong>Error:</strong> {error}
-                </div>
-              )}
-
-              {rows && (
-                <pre className="bg-slate-50 dark:bg-slate-900 p-3 rounded text-xs overflow-auto max-h-64 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700">
-                  {JSON.stringify(rows, null, 2)}
-                </pre>
-              )}
-
-              {!loading && !error && !rows && (
-                <div className="text-slate-500 dark:text-slate-400 italic">
-                  No data yet...
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
