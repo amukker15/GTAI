@@ -58,7 +58,16 @@ export default function LongTerm() {
       className="page pt-0 pb-10 space-y-6"
       style={{ marginTop: "var(--app-header-height, 96px)" }}
     >
-      {/* Header matching SpecificTruck style */}
+      {/* Header Section */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-8">
+        <div className="text-center">
+          <p className="text-xs uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Analytics Dashboard</p>
+          <h1 className="mt-2 text-4xl font-bold text-gray-900 dark:text-white">Long-term Trends</h1>
+          <p className="mt-3 text-lg text-gray-600 dark:text-gray-300">Track driver performance over time</p>
+        </div>
+      </div>
+
+      {/* Navigation and Filters */}
       <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-xl backdrop-blur px-6 py-5">
         <div className="flex flex-wrap items-center gap-5 justify-between">
           <Link
@@ -78,7 +87,6 @@ export default function LongTerm() {
           <div className="flex-1 min-w-[200px] text-right">
             <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Truck ID</div>
             <div className="text-2xl font-semibold text-gray-900 dark:text-white">{truckId}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">Long-term Analytics</div>
           </div>
         </div>
 

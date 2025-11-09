@@ -269,6 +269,15 @@ export default function MainScreen() {
         style={{ paddingTop: "var(--app-header-height, 96px)" }}
       >
         <div className="h-full overflow-y-auto px-6 py-6 space-y-6">
+          {/* Header Section */}
+          <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-8">
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Mission Control</p>
+              <h1 className="mt-2 text-4xl font-bold text-gray-900 dark:text-white">Fleet Overview</h1>
+              <p className="mt-3 text-lg text-gray-600 dark:text-gray-300">Monitor your fleet in real-time</p>
+            </div>
+          </section>
+
           {/* Hero Stats */}
           <section className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
