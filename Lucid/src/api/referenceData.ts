@@ -38,8 +38,8 @@ export type DriverDefinition = {
 };
 
 export const DRIVERS: DriverDefinition[] = [
-  { driverId: "DRV-001", driverName: "Aditya Mukker", truckId: "LF-101", company: "Lucid Freight", routeId: "ATL-CHI" },
-  { driverId: "DRV-002", driverName: "Navadeep Budda", truckId: "LF-202", company: "Lucid Freight", routeId: "DAL-LAX" },
-  { driverId: "DRV-003", driverName: "Fawaz Sabir", truckId: "LF-303", company: "Lucid Freight", routeId: "SEA-SLC" },
-  { driverId: "DRV-004", driverName: "Ojas Mediratta", truckId: "LF-404", company: "Lucid Freight", routeId: "NYC-SAV" },
+  { driverId: "DRV-001", driverName: "Ojas Mediratta", truckId: "LF-101", company: "Lucid Freight", routeId: "ATL-CHI" },
+  { driverId: "DRV-002", driverName: "Fawaz Sabir", truckId: "LF-202", company: "Lucid Freight", routeId: "DAL-LAX" },
+  { driverId: "DRV-003", driverName: "Navadeep Budda", truckId: "LF-303", company: "Lucid Freight", routeId: "SEA-SLC" },
+  { driverId: "DRV-004", driverName: "Aditya Mukker", truckId: "LF-404", company: "Lucid Freight", routeId: "NYC-SAV" },
 ];
